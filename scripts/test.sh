@@ -46,7 +46,7 @@ failures=()
 pass() { printf '  \033[32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; failures+=("$*"); }
 
-# Unix socket paths are limited to 104 bytes on macOS, so keep this short.
+# Short path: unix socket paths are limited to 104 bytes.
 TMP="$(mktemp -d /tmp/qgl.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -119,8 +119,7 @@ boot_test() {
     local gl="$1" dir="$TMP/boot-$1" pid waited=0 status
     mkdir -p "$dir"
 
-    # -nodefaults: no default NIC, whose PXE/HTTP boot attempts would delay
-    # the firmware shell by minutes under TCG.
+    # -nodefaults: a default NIC's PXE boot delays the shell by minutes under TCG.
     "$QEMU" -M virt -nodefaults -accel "$TEST_ACCEL" -cpu "$TEST_CPU" -m 512M \
         -bios "$PREFIX/share/qemu/edk2-aarch64-code.fd" \
         -device virtio-gpu-gl-pci -display "cocoa,gl=$gl" \

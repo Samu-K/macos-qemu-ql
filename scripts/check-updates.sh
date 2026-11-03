@@ -25,7 +25,6 @@ latest_tag() {
         tail -1
 }
 
-# Prints "<new ref>" for a tag-based component.
 latest_qemu()          { latest_tag "$QEMU_URL" '^v[0-9]+\.[0-9]+\.[0-9]+$'; }
 latest_virglrenderer() { latest_tag "$VIRGLRENDERER_URL" '^virglrenderer-[0-9]+\.[0-9]+\.[0-9]+$'; }
 latest_libepoxy()      { latest_tag "$LIBEPOXY_URL" '^[0-9]+\.[0-9]+\.[0-9]+$'; }
@@ -63,7 +62,6 @@ list_updates() {
             new="$("latest_$c")"
             [ -n "$new" ] || die "$c: no release tags found"
             [ "$new" = "$cur" ] && continue
-            # Never downgrade, e.g. if a tag disappears upstream.
             [ "$(printf '%s\n%s\n' "$cur" "$new" | sort -V | tail -1)" = "$new" ] || continue
             echo "$c $cur $new"
         fi
