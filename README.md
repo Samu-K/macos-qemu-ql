@@ -37,8 +37,18 @@ Exact refs live in [`versions.env`](versions.env) and patches in [`patches/`](pa
 
 Requirements: Apple Silicon Mac, macOS 15+, **Xcode** (not just the Command Line Tools) with the Metal toolchain, Homebrew, and about 30 GB of free disk (most of it for ANGLE's Chromium build dependencies).
 
+One-time Xcode setup. The full paths work even if `xcode-select` still points at the Command Line Tools; `build.sh` uses Xcode only for the ANGLE step.
+
 ```sh
-xcodebuild -downloadComponent MetalToolchain
+X=/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild
+sudo $X -license accept
+sudo $X -runFirstLaunch                 # installs frameworks the next step needs
+$X -downloadComponent MetalToolchain    # ~700 MB; Xcode 26+ ships it separately
+```
+
+Then:
+
+```sh
 brew install meson ninja pkgconf glib pixman python
 scripts/fetch.sh    # clone pinned sources into src/, apply patches
 scripts/build.sh    # build and install into prefix/
