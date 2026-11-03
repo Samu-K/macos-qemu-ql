@@ -26,7 +26,7 @@ Upstream QEMU on macOS has no OpenGL display backend, so `virtio-gpu-gl` and `gl
 
 | Component | Version | Patches |
 |---|---|---|
-| QEMU | 11.1.3 | `ui/cocoa`: GL support via CGL and ANGLE/EGL (Akihiko Odaki's series, v23) |
+| QEMU | 11.1.3 | `ui/cocoa`: GL support via CGL and ANGLE/EGL (Akihiko Odaki's series, v23); EGL build fix for macOS |
 | virglrenderer | 1.3.0 | GLES 3.0 blitter shaders; integer vertex attributes on ANGLE/Apple |
 | libepoxy | 1.5.10 | EGL on macOS (backport of an upstream change merged after 1.5.10); find EGL next to libepoxy via `@rpath` |
 | ANGLE | Chrome 156 stable (`chromium/8078`) | none |
@@ -35,10 +35,11 @@ Exact refs live in [`versions.env`](versions.env) and patches in [`patches/`](pa
 
 ## Building
 
-Requirements: Apple Silicon Mac, macOS 15+, Xcode Command Line Tools, Homebrew, about 30 GB of free disk (most of it for ANGLE's Chromium build dependencies).
+Requirements: Apple Silicon Mac, macOS 15+, **Xcode** (not just the Command Line Tools) with the Metal toolchain, Homebrew, and about 30 GB of free disk (most of it for ANGLE's Chromium build dependencies).
 
 ```sh
-brew install meson ninja pkgconf glib pixman
+xcodebuild -downloadComponent MetalToolchain
+brew install meson ninja pkgconf glib pixman python
 scripts/fetch.sh    # clone pinned sources into src/, apply patches
 scripts/build.sh    # build and install into prefix/
 ```

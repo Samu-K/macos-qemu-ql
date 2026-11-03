@@ -24,8 +24,10 @@ build_angle() {
         angle_has_frame_capture=false
         angle_build_tests=false
     )
-    (cd "$SRC/angle" && gn gen "$out" --args="${args[*]}")
-    ninja -C "$out" install_angle
+    # Use the gn/ninja binaries gclient pinned in the ANGLE tree; depot_tools'
+    # gn wrapper would first need its own Python bootstrap.
+    (cd "$SRC/angle" && buildtools/mac/gn gen "$out" --args="${args[*]}")
+    "$SRC/angle/third_party/ninja/ninja" -C "$out" install_angle
 }
 
 # meson_build <component> [meson setup options...]
@@ -45,7 +47,8 @@ build_libepoxy() {
 }
 
 build_virglrenderer() {
-    meson_build virglrenderer -Dtests=false
+    # Require EGL so a libepoxy without EGL support fails here, not at runtime.
+    meson_build virglrenderer -Dplatforms=egl -Dtests=false
 }
 
 build_qemu() {
@@ -68,8 +71,22 @@ build_qemu() {
     make -C "$out" install
 }
 
+# Python for the meson-based builds: QEMU's configure needs >= 3.11 (the
+# macOS system python is 3.9) and virglrenderer's codegen needs PyYAML.
+setup_venv() {
+    local venv="$BUILD/venv" py
+    py="$(brew --prefix)/bin/python3"
+    if [ ! -x "$venv/bin/python3" ]; then
+        log "creating build venv"
+        "$py" -m venv "$venv"
+        "$venv/bin/pip" install --quiet --disable-pip-version-check pyyaml
+    fi
+    export PATH="$venv/bin:$PATH"
+}
+
 read -r -a selected <<<"$(select_components "$@")"
 
+setup_venv
 for c in "${selected[@]}"; do
     [ -d "$SRC/$c/.git" ] || die "$c: src/$c missing; run scripts/fetch.sh $c first"
     log "$c: building"

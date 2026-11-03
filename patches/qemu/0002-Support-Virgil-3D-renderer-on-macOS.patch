@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
 Date: Wed, 24 Dec 2025 10:57:01 +0900
-Subject: [PATCH 2/2] Support Virgil 3D renderer on macOS
+Subject: [PATCH 2/3] Support Virgil 3D renderer on macOS
 
 Virgil 3D renderer will be available with ui/cocoa on macOS.
 

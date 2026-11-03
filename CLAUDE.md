@@ -64,4 +64,8 @@ prefix/bin/qemu-system-aarch64 -M virt,accel=hvf -cpu host -m 4G \
   in upstream style, so they could be sent upstream as-is.
 - Commits in this repo: plain messages, no Claude/AI attribution or `Co-Authored-By` trailers.
 - No remote yet; don't push or create GitHub repos unless asked.
-- Build host: Apple Silicon, macOS 15+, Xcode Command Line Tools. Homebrew tools: `meson ninja pkgconf glib pixman`.
+- Build host: Apple Silicon, macOS 15+, **full Xcode** plus its Metal toolchain
+  (`xcodebuild -downloadComponent MetalToolchain`). ANGLE's Chromium build calls `xcodebuild` and precompiles Metal
+  shaders; the Command Line Tools alone are not enough. Homebrew: `meson ninja pkgconf glib pixman python`.
+- `build.sh` creates `build/venv` from Homebrew's python (QEMU needs >= 3.11; virglrenderer needs PyYAML).
+- ANGLE is built with the `gn`/`ninja` binaries gclient puts in `src/angle` (not depot_tools' wrappers).

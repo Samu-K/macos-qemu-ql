@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Samu Kaarlela <samu@Samus-MacBook-Pro.local>
+Date: Tue, 3 Nov 2026 17:56:31 +0200
+Subject: [PATCH 3/3] ui/egl-helpers: Fix build with integer
+ EGLNativeDisplayType
+
+The native_display parameter of eglGetPlatformDisplayEXT() is void *,
+but qemu_egl_get_display() passes EGLNativeDisplayType. That is a
+pointer on X11/GBM, but an int on other platforms, e.g. with ANGLE's
+eglplatform.h on macOS. Building on macOS with CONFIG_X11 (set whenever
+pkg-config finds x11, as with Homebrew's libx11) therefore fails:
+
+  ui/egl-helpers.c: error: incompatible integer to pointer conversion
+  passing 'EGLNativeDisplayType' (aka 'int') to parameter of type
+  'void *' [-Wint-conversion]
+
+Convert explicitly through uintptr_t, which is correct for both
+pointer and integer display types.
+---
+ ui/egl-helpers.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/ui/egl-helpers.c b/ui/egl-helpers.c
+index 3530bd9..b58bfb2 100644
+--- a/ui/egl-helpers.c
++++ b/ui/egl-helpers.c
+@@ -608,7 +608,8 @@ EGLDisplay qemu_egl_get_display(EGLNativeDisplayType native,
+     /* In practise any EGL 1.5 implementation would support the EXT extension */
+     if (epoxy_has_egl_extension(NULL, "EGL_EXT_platform_base")) {
+         if (platform != 0) {
+-            dpy = eglGetPlatformDisplayEXT(platform, native, NULL);
++            dpy = eglGetPlatformDisplayEXT(platform,
++                                           (void *)(uintptr_t)native, NULL);
+         }
+     }
+ 
