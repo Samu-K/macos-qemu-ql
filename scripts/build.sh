@@ -45,6 +45,12 @@ build_angle() (
     # gn wrapper would first need its own Python bootstrap.
     (cd "$SRC/angle" && buildtools/mac/gn gen "$out" --args="${args[*]}")
     "$SRC/angle/third_party/ninja/ninja" -C "$out" install_angle
+
+    # Chromium links these with a cwd-relative "./libEGL.dylib" install name.
+    local lib
+    for lib in libEGL libGLESv1_CM libGLESv2; do
+        install_name_tool -id "@rpath/$lib.dylib" "$PREFIX/lib/$lib.dylib"
+    done
 )
 
 # meson_build <component> [meson setup options...]

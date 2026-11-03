@@ -21,8 +21,6 @@ PATCH_BRANCH=macos-gl
 
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
 
-export DEPOT_TOOLS_UPDATE=0
-export PATH="$SRC/depot_tools:$PATH"
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*" >&2; }

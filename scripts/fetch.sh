@@ -87,14 +87,18 @@ apply_patches() {
     fi
 }
 
-sync_angle() {
+sync_angle() (
     local dir="$SRC/angle"
+    # depot_tools only on PATH here: its ninja/gn wrappers would shadow the
+    # real tools for the other builds.
+    export DEPOT_TOOLS_UPDATE=0
+    export PATH="$SRC/depot_tools:$PATH"
     log "angle: syncing third-party dependencies (large download on first run)"
     if [ ! -f "$dir/.gclient" ]; then
         (cd "$dir" && python3 scripts/bootstrap.py)
     fi
     (cd "$dir" && gclient sync --no-history --shallow -D)
-}
+)
 
 mkdir -p "$SRC"
 read -r -a selected <<<"$(select_components "$@")"

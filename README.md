@@ -28,7 +28,7 @@ Upstream QEMU on macOS has no OpenGL display backend, so `virtio-gpu-gl` and `gl
 |---|---|---|
 | QEMU | 11.1.3 | `ui/cocoa`: GL support via CGL and ANGLE/EGL (Akihiko Odaki's series, v23); EGL build fix for macOS |
 | virglrenderer | 1.3.0 | GLES 3.0 blitter shaders; integer vertex attributes on ANGLE/Apple |
-| libepoxy | 1.5.10 | EGL on macOS (backport of an upstream change merged after 1.5.10); find EGL next to libepoxy via `@rpath` |
+| libepoxy | 1.5.10 | EGL on macOS (backport of an upstream change merged after 1.5.10); find EGL next to libepoxy via `@rpath`; resolve EGL 1.5 client functions before a display exists |
 | ANGLE | Chrome 156 stable (`chromium/8078`) | none |
 
 Exact refs live in [`versions.env`](versions.env) and patches in [`patches/`](patches/). Most of the patch work is by **Akihiko Odaki**, who wrote the original macOS virgl/ANGLE integration.

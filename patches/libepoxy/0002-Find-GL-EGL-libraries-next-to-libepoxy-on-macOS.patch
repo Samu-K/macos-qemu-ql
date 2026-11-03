@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Samu Kaarlela <samu@Samus-MacBook-Pro.local>
 Date: Tue, 3 Nov 2026 17:47:05 +0200
-Subject: [PATCH 2/2] Find GL/EGL libraries next to libepoxy on macOS
+Subject: [PATCH 2/3] Find GL/EGL libraries next to libepoxy on macOS
 
 dlopen() with a bare library name only searches the DYLD_* paths and
 the current directory on macOS, so libEGL.dylib/libGLESv2.dylib from

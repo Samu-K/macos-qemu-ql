@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Samu Kaarlela <samu@Samus-MacBook-Pro.local>
+Date: Tue, 3 Nov 2026 18:20:14 +0200
+Subject: [PATCH 3/3] Resolve EGL 1.5 client functions before a display exists
+
+epoxy_conservative_egl_version() returns 14 when no display is current,
+so EGL 1.5 core functions that are meant to be called before any display
+exists can never be resolved. In particular eglGetPlatformDisplay()
+aborts with:
+
+  No provider of eglGetPlatformDisplay found.  Requires one of:
+      EGL 15
+
+even though the implementation (e.g. ANGLE) supports EGL 1.5, since
+there is no display to query until eglGetPlatformDisplay() has
+returned one.
+
+EGL 1.5 allows querying the client library version with
+eglQueryString(EGL_NO_DISPLAY, EGL_VERSION). Use it when no display is
+current. Older implementations reject EGL_NO_DISPLAY there with
+EGL_BAD_DISPLAY; clear that error and keep the previous assumption of
+EGL 1.4.
+---
+ src/dispatch_egl.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/src/dispatch_egl.c b/src/dispatch_egl.c
+index 3f0c789..4a44c2b 100644
+--- a/src/dispatch_egl.c
++++ b/src/dispatch_egl.c
+@@ -31,11 +31,24 @@ int
+ epoxy_conservative_egl_version(void)
+ {
+     EGLDisplay dpy = eglGetCurrentDisplay();
++    int client_version;
+ 
+-    if (!dpy)
+-        return 14;
++    if (dpy)
++        return epoxy_egl_version(dpy);
+ 
+-    return epoxy_egl_version(dpy);
++    /*
++     * Without a current display, use the client library version. EGL 1.5
++     * supports eglQueryString(EGL_NO_DISPLAY, EGL_VERSION), which lets 1.5
++     * client entry points such as eglGetPlatformDisplay() resolve before any
++     * display exists. Earlier implementations fail with EGL_BAD_DISPLAY;
++     * clear that error and keep assuming 1.4.
++     */
++    client_version = epoxy_egl_version(EGL_NO_DISPLAY);
++    if (client_version)
++        return client_version;
++
++    (void)eglGetError();
++    return 14;
+ }
+ 
+ /**
