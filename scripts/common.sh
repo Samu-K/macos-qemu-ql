@@ -15,6 +15,10 @@ PREFIX="${PREFIX:-$ROOT/prefix}"
 PATCHES="$ROOT/patches"
 DIST="$ROOT/dist"
 
+# Name of the binary package and where it is published (scripts/package.sh).
+PACKAGE_NAME=macos-qemu-gl
+PROJECT_URL=https://github.com/Samu-K/macos-qemu-ql
+
 # Order matters: each component builds against the ones before it.
 COMPONENTS=(angle libepoxy virglrenderer qemu)
 
@@ -44,4 +48,19 @@ select_components() {
         [[ " ${COMPONENTS[*]} " == *" $c "* ]] || die "unknown component: $c (expected: ${COMPONENTS[*]})"
     done
     echo "$@"
+}
+
+# ANGLE's Chromium build needs full Xcode (xcodebuild, Metal toolchain). Use it
+# for this build only when the active developer dir is the Command Line Tools.
+use_xcode() {
+    if xcodebuild -version >/dev/null 2>&1; then
+        return 0
+    fi
+    local xcode="${XCODE_APP:-/Applications/Xcode.app}/Contents/Developer"
+    [ -d "$xcode" ] || die "ANGLE needs full Xcode; install it or set XCODE_APP=/path/to/Xcode.app"
+    export DEVELOPER_DIR="$xcode"
+    xcodebuild -version >/dev/null 2>&1 ||
+        die "xcodebuild failed; accept the license with: sudo xcodebuild -license"
+    xcrun --find metal >/dev/null 2>&1 && xcrun metal --version >/dev/null 2>&1 ||
+        die "Metal toolchain missing; run: xcodebuild -downloadComponent MetalToolchain"
 }

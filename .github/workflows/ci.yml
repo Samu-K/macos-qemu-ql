@@ -27,7 +27,7 @@ jobs:
 
       - uses: ./.github/actions/setup-build-env
 
-      - name: Fetch, build and test
+      - name: Fetch, build, test and package
         run: scripts/ci.sh
 
       - name: Upload logs
@@ -37,3 +37,10 @@ jobs:
           name: logs
           path: logs/
           if-no-files-found: ignore
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: dist/*-macos-arm64.tar.xz*
+          retention-days: 14

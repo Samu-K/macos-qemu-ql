@@ -14,9 +14,10 @@ QEMU for macOS with OpenGL acceleration for guests (`virtio-gpu-gl` + `-display 
 
 - `versions.env`: pinned upstream URLs and refs. This is the only place versions live.
 - `patches/<component>/*.patch`: our changes, as `git format-patch` series applied with `git am`.
-- `scripts/`: `fetch.sh`, `build.sh`, `test.sh`, `export-patches.sh`, `check-updates.sh`, `ci.sh` (CI entry point),
+- `scripts/`: `fetch.sh`, `build.sh`, `test.sh`, `export-patches.sh`, `check-updates.sh`, `package.sh`, `ci.sh` (CI entry point),
   shared setup in `common.sh`.
-- `.github/`: `ci.yml` (PRs/main), `nightly-updates.yml` (automatic version bumps); see `docs/ci.md`.
+- `.github/`: `ci.yml` (PRs/main), `nightly-updates.yml` (automatic version bumps), `release.yml` (tag → draft
+  release); see `docs/ci.md` and `docs/packaging.md`.
 - `docs/`: user and maintainer documentation.
 - Generated and gitignored: `src/` (upstream checkouts), `build/` (build trees), `prefix/` (install), `dist/` (packages).
 - `example-case/`: imported reference only (gitignored, will be deleted). Never reference it from scripts or docs.
@@ -34,7 +35,9 @@ scripts/export-patches.sh qemu        # write src/qemu commits (upstream..macos-
 scripts/test.sh                       # test prefix/ (opens QEMU windows briefly); scripts/test.sh boot-es for one test
 scripts/check-updates.sh              # list newer upstream stable releases
 scripts/check-updates.sh --apply qemu # pin the newest qemu in versions.env (+ README table)
-scripts/ci.sh                         # what CI runs: fetch --reset, build, test, with logs in logs/
+scripts/package.sh                    # self-contained tarball in dist/ (--source: also the source archive)
+scripts/test.sh --package dist/<name>-macos-arm64.tar.xz   # test a package (adds the bundle test)
+scripts/ci.sh                         # what CI runs: fetch --reset, build, test, package, test-package; logs in logs/
 ```
 
 Each `src/<component>` is a shallow git checkout with branch `upstream` (the pinned ref) and

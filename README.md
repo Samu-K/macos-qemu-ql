@@ -50,7 +50,7 @@ The only runtime libraries outside this stack are glib, pixman, libslirp and zst
 Early, but working:
 - **Done:** the full stack builds, and QEMU boots UEFI firmware with HVF under both `gl=es` and `gl=on`.
 - **Not done yet:** accelerated rendering inside a Linux guest hasn't been verified.
-- **Planned:** prebuilt binaries and a Homebrew tap. Until those exist, build from source.
+- **In progress:** prebuilt binaries. Packaging and a release workflow exist, but nothing has been released yet. A Homebrew tap comes after that. Until then, build from source.
 
 ## Building
 
@@ -78,6 +78,8 @@ scripts/build.sh    # build everything and install into prefix/
 ```
 
 The result is in `prefix/`. Binaries are in `prefix/bin`, and firmware is in `prefix/share/qemu`.
+
+To make a self-contained tarball that runs anywhere without Homebrew, run `scripts/package.sh`. See [`docs/packaging.md`](docs/packaging.md).
 
 ## Usage
 
@@ -116,6 +118,8 @@ Things to know:
 [`CLAUDE.md`](CLAUDE.md) has the maintainer workflow: changing a patch, re-exporting patch files, and bumping a version.
 
 A nightly GitHub Actions job checks for new upstream releases, then builds and tests them. Passing updates are merged automatically; failing ones get a pull request and an issue. See [`docs/ci.md`](docs/ci.md).
+
+Packaging and releases are described in [`docs/packaging.md`](docs/packaging.md).
 
 ## Credits
 

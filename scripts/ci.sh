@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# CI entry point: fetch, build and test from scratch, one log per stage.
+# CI entry point: fetch, build, test, package and test the package from
+# scratch, one log per stage.
 #
 #   scripts/ci.sh
 #
 # Logs go to $LOG_DIR (default: logs/<stage>.log). When a stage fails, its
 # name is written to $LOG_DIR/failed-stage and the script exits non-zero.
+#
+# Environment:
+#   CI_SOURCE_ARCHIVE=1  also write the source archive (scripts/package.sh --source)
+#   PACKAGE_VERSION      passed on to scripts/package.sh
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -33,4 +38,11 @@ run_stage() {
 run_stage fetch scripts/fetch.sh --reset
 run_stage build scripts/build.sh
 run_stage test scripts/test.sh
-log "fetch, build and test passed"
+
+package_args=()
+[ -z "${CI_SOURCE_ARCHIVE:-}" ] || package_args+=(--source)
+rm -rf "$DIST"
+run_stage package scripts/package.sh ${package_args[@]+"${package_args[@]}"}
+tarballs=("$DIST"/*-macos-arm64.tar.xz)
+run_stage test-package scripts/test.sh --package "${tarballs[0]}"
+log "all stages passed: $(basename "${tarballs[0]}")"

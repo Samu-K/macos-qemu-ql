@@ -1,0 +1,72 @@
+name: Release
+
+# Pushing a tag v<qemu version>-<n> (for example v11.1.3-1) builds and tests
+# the binary package from scratch and attaches it, with the corresponding
+# source archive, to a draft GitHub release. Review the draft and publish it.
+# <n> counts releases of the same QEMU version (other components, patches).
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and draft release
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check tag
+        run: |
+          source versions.env
+          version="${GITHUB_REF_NAME#v}"
+          if [[ ! "$version" =~ ^${QEMU_REF#v}-[0-9]+$ ]]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match the pinned QEMU; expected v${QEMU_REF#v}-<n>"
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$version" >>"$GITHUB_ENV"
+
+      - uses: ./.github/actions/setup-build-env
+
+      - name: Fetch, build, test and package
+        env:
+          CI_SOURCE_ARCHIVE: 1
+        run: scripts/ci.sh
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs/
+          if-no-files-found: ignore
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source scripts/common.sh
+          pkg="$PACKAGE_NAME-$PACKAGE_VERSION"
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$pkg-macos-arm64.tar.xz"
+          {
+            echo "QEMU with OpenGL acceleration for Linux guests on Apple Silicon Macs."
+            echo
+            sed -n '/^## Contents/,/^License texts/p' "build/package/$pkg/README.md" | sed '$d'
+            echo "## Install"
+            echo
+            echo '```sh'
+            echo "curl -LO $url"
+            echo "tar -xJf $pkg-macos-arm64.tar.xz"
+            echo "$pkg/bin/qemu-system-aarch64 --version"
+            echo '```'
+            echo
+            echo "See README.md in the archive for an example. \`$pkg-source.tar\` is the corresponding source."
+          } >"$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "$pkg" --notes-file "$RUNNER_TEMP/notes.md" dist/*

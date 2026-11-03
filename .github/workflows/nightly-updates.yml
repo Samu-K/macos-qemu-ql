@@ -89,7 +89,7 @@ jobs:
 
       - uses: ./.github/actions/setup-build-env
 
-      - name: Fetch, build and test
+      - name: Fetch, build, test and package
         id: ci
         run: scripts/ci.sh
 
@@ -106,7 +106,7 @@ jobs:
         if: always() && steps.pin.outcome == 'success'
         run: |
           if [ "${{ steps.ci.outcome }}" = success ]; then
-            result="Fetch, build and test passed; merging automatically."
+            result="Fetch, build, test and packaging passed; merging automatically."
           else
             result="**Failed** at stage \`$(cat logs/failed-stage 2>/dev/null || echo setup)\`. See the linked issue."
           fi

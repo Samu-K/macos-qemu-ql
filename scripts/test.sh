@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Test the build installed in $PREFIX (default: prefix/).
+# Test the build installed in $PREFIX (default: prefix/), or a package made
+# by scripts/package.sh.
 #
 #   scripts/test.sh [test...]
+#   scripts/test.sh --package dist/<name>-macos-arm64.tar.xz [test...]
 #
-# Tests: version linkage features qemu-img boot-es boot-on (default: all).
+# Tests: version linkage features qemu-img boot-es boot-on bundle. The default
+# is all of them; bundle (the package is self-contained) only with --package,
+# which unpacks the tarball into a temporary directory and tests that.
 #
 # The boot tests start qemu-system-aarch64 with virtio-gpu-gl-pci and the Cocoa
 # display (gl=es / gl=on), boot the bundled EDK2 firmware to its UEFI shell and
@@ -16,6 +20,14 @@
 #   TEST_TIMEOUT  seconds to wait for each boot (default: 180)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+package=
+if [ "${1:-}" = --package ]; then
+    [ $# -ge 2 ] || die "usage: scripts/test.sh --package <tarball> [test...]"
+    package="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+    [ -f "$package" ] || die "$2 not found"
+    shift 2
+fi
 
 if [ -z "${TEST_ACCEL:-}" ]; then
     if [ "$(sysctl -n kern.hv_support 2>/dev/null)" = 1 ]; then
@@ -32,9 +44,8 @@ else
     TEST_CPU=max,pauth-impdef=on
 fi
 TEST_TIMEOUT="${TEST_TIMEOUT:-180}"
-ALL_TESTS=(version linkage features qemu-img boot-es boot-on)
+ALL_TESTS=(version linkage features qemu-img boot-es boot-on bundle)
 
-QEMU="$PREFIX/bin/qemu-system-aarch64"
 BINARIES=(qemu-system-aarch64 qemu-system-x86_64 qemu-img)
 
 # Libraries the binaries may link besides macOS itself (dependency policy in
@@ -49,6 +60,14 @@ fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; failures+=("$*"); }
 # Unix socket paths are limited to 104 bytes on macOS, so keep this short.
 TMP="$(mktemp -d /tmp/qgl.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
+
+if [ -n "$package" ]; then
+    mkdir "$TMP/pkg"
+    tar -xJf "$package" -C "$TMP/pkg"
+    PREFIX="$(echo "$TMP"/pkg/*)"
+    [ -d "$PREFIX/bin" ] || die "$package doesn't contain a single top-level directory with bin/"
+fi
+QEMU="$PREFIX/bin/qemu-system-aarch64"
 
 test_version() {
     local want="${QEMU_REF#v}" got
@@ -84,7 +103,9 @@ test_linkage() {
             ok=0
         done < <(external_libs "$file")
     done
-    [ $ok -eq 1 ] && pass "binaries link only allowed libraries"
+    if [ $ok -eq 1 ]; then
+        pass "binaries link only allowed libraries"
+    fi
 }
 
 test_features() {
@@ -193,13 +214,68 @@ boot_test() {
 test_boot_es() { boot_test es; }
 test_boot_on() { boot_test on; }
 
+# The package runs from wherever it is unpacked: every non-system library is
+# inside it and linked via @rpath, signatures are intact, and QEMU looks for
+# firmware in the package.
+test_bundle() {
+    local f lib rp ok=1
+    for f in "$PREFIX"/bin/* "$PREFIX"/lib/*.dylib; do
+        file -b "$f" | grep -q '^Mach-O' || continue
+        while read -r lib; do
+            [ -n "$lib" ] || continue
+            if [[ "$lib" != @rpath/* ]] || [ ! -f "$PREFIX/lib/${lib#@rpath/}" ]; then
+                fail "$(basename "$f") links $lib, which isn't bundled"
+                ok=0
+            fi
+        done < <(external_libs "$f")
+        while read -r rp; do
+            case "$rp" in
+                @loader_path|@executable_path/../lib) ;;
+                *) fail "$(basename "$f") has rpath $rp"; ok=0 ;;
+            esac
+        done < <(otool -l "$f" | awk '/cmd LC_RPATH/ {r=1} r && $1 == "path" {print $2; r=0}')
+        if ! codesign --verify --strict "$f" 2>/dev/null; then
+            fail "$(basename "$f") has an invalid code signature"
+            ok=0
+        fi
+    done
+    if [ $ok -eq 1 ]; then
+        pass "all libraries bundled and linked via @rpath, signatures valid"
+    fi
+
+    codesign -d --entitlements - "$QEMU" 2>/dev/null | grep -q com.apple.security.hypervisor &&
+        pass "qemu-system-aarch64 keeps the hypervisor entitlement" ||
+        fail "qemu-system-aarch64 lost the hypervisor entitlement"
+
+    # QEMU reports the physical path (/tmp is a symlink to /private/tmp).
+    "$QEMU" -L help | grep -qxF "$(cd -P "$PREFIX" && pwd)/bin/../share/qemu" &&
+        pass "firmware is looked up in the package" ||
+        fail "firmware search path is outside the package: $("$QEMU" -L help | tr '\n' ' ')"
+
+    # What gl=es actually loaded, including ANGLE via dlopen (from boot-es).
+    if [ -f "$TMP/boot-es/vmmap" ]; then
+        local outside
+        outside="$(grep -oE '(/opt/homebrew|/usr/local|'"$ROOT"')/[^ ]+' "$TMP/boot-es/vmmap" | sort -u || true)"
+        if [ -z "$outside" ]; then
+            pass "gl=es: nothing loaded from Homebrew or the build tree"
+        else
+            fail "gl=es: loaded files from outside the package: $(echo "$outside" | tr '\n' ' ')"
+        fi
+    fi
+}
+
 [ -x "$QEMU" ] || die "$QEMU not found; run scripts/build.sh first"
 
 tests=("$@")
-[ ${#tests[@]} -gt 0 ] || tests=("${ALL_TESTS[@]}")
+if [ ${#tests[@]} -eq 0 ]; then
+    tests=("${ALL_TESTS[@]}")
+    [ -n "$package" ] || tests=("${tests[@]/bundle}")
+fi
 
 log "accelerator: $TEST_ACCEL, cpu: $TEST_CPU"
+[ -z "$package" ] || log "package: $(basename "$package")"
 for t in "${tests[@]}"; do
+    [ -n "$t" ] || continue
     [[ " ${ALL_TESTS[*]} " == *" $t "* ]] || die "unknown test: $t (expected: ${ALL_TESTS[*]})"
     log "test: $t"
     "test_${t//-/_}"

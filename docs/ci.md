@@ -1,10 +1,11 @@
 # CI and automated updates
 
-Two GitHub Actions workflows, both on GitHub's Apple Silicon runners (`macos-15`):
+Three GitHub Actions workflows, all on GitHub's Apple Silicon runners (`macos-15`):
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | pull requests, pushes to `main`, manual | `scripts/ci.sh`: fetch, build, test |
+| `ci.yml` | pull requests, pushes to `main`, manual | `scripts/ci.sh`: fetch, build, test, package, test the package; uploads the package |
+| `release.yml` | tags `v<qemu version>-<n>` | `scripts/ci.sh` plus the source archive, then a draft release (see [packaging.md](packaging.md)) |
 | `nightly-updates.yml` | daily 02:23 UTC, manual | finds new upstream releases, then tests, merges or reports them |
 
 ## Nightly updates
@@ -15,7 +16,7 @@ Two GitHub Actions workflows, both on GitHub's Apple Silicon runners (`macos-15`
 2. Each update runs as its own job, one at a time. The job pins the new version on branch `update/<component>-<version>`, then runs `scripts/ci.sh`.
 3. It always opens a pull request. Older open update PRs for the same component are closed as superseded.
    - **Tests pass:** the PR is squash-merged right away.
-   - **Tests fail:** the PR stays open, and an issue labelled `dependency-update` names the failing stage (`fetch`, `build` or `test`). The issue includes the end of that stage's log. Full logs are attached to the run as artifacts.
+   - **Tests fail:** the PR stays open, and an issue labelled `dependency-update` names the failing stage (`fetch`, `build`, `test`, `package` or `test-package`). The issue includes the end of that stage's log. Full logs are attached to the run as artifacts.
 4. On later nights, a version whose `update/...` branch still exists is skipped, so a failure is reported once, not every night.
 
 ### Fixing a failed update
@@ -38,6 +39,9 @@ Push to the branch. `ci.yml` runs on the pull request; merge it once green, then
   - Passes when the firmware shell is reached, QMP reports the GL mode, and QEMU exits cleanly with nothing on stderr.
   - For `gl=es`, it also checks that ANGLE was loaded from the build.
   - This exercises EGL/CGL initialization and virglrenderer startup on the host. It doesn't yet render 3D inside a Linux guest.
+- **bundle** (only with `--package`): the package is self-contained and relocatable. See [packaging.md](packaging.md#testing-a-package).
+
+The `test-package` stage runs all of these again on the unpacked package.
 
 Locally the boot tests use HVF and take seconds. GitHub's macOS runners are VMs without nested virtualization, so there they use TCG emulation, which is slower but still well within the timeout.
 
