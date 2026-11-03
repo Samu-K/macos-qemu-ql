@@ -75,7 +75,7 @@ prefix/bin/qemu-system-aarch64 -M virt,accel=hvf -cpu host -m 4G \
 - Preserve upstream authorship in patches (`git am` keeps it). New patches get a commit message that explains *why*,
   in upstream style, so they could be sent upstream as-is.
 - Commits in this repo: plain messages, no Claude/AI attribution or `Co-Authored-By` trailers.
-- No remote yet; don't push or create GitHub repos unless asked.
+- Remote: `origin` = `git@github.com:Samu-K/macos-qemu-ql.git` (public). Don't push unless asked.
 - Build host: Apple Silicon, macOS 15+, **full Xcode** plus its Metal toolchain
   (`xcodebuild -downloadComponent MetalToolchain`). ANGLE's Chromium build calls `xcodebuild` and precompiles Metal
   shaders; the Command Line Tools alone are not enough. Homebrew: `meson ninja pkgconf glib pixman libslirp zstd python`.
