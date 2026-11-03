@@ -1,0 +1,13 @@
+# Reference material only; not part of this project and will be deleted.
+/example-case/
+
+# Upstream sources fetched by the build scripts
+/src/
+
+# Build trees, install prefix and packaged output
+/build/
+/prefix/
+/dist/
+
+.DS_Store
+*.log

@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Samu Kaarlela <samu@Samus-MacBook-Pro.local>
+Date: Tue, 3 Nov 2026 17:47:05 +0200
+Subject: [PATCH 2/2] Find GL/EGL libraries next to libepoxy on macOS
+
+dlopen() with a bare library name only searches the DYLD_* paths and
+the current directory on macOS, so libEGL.dylib/libGLESv2.dylib from
+ANGLE installed alongside libepoxy are not found unless the caller sets
+DYLD_FALLBACK_LIBRARY_PATH.
+
+Try "@rpath/<name>" first and give libepoxy an @loader_path rpath, so
+libraries in libepoxy's own directory are preferred. This works both in
+an install prefix and in a relocated bundle. The bare name is still tried
+afterwards, so existing setups keep working.
+---
+ src/dispatch_common.c | 29 +++++++++++++++++++++++++++++
+ src/meson.build       |  8 +++++++-
+ 2 files changed, 36 insertions(+), 1 deletion(-)
+
+diff --git a/src/dispatch_common.c b/src/dispatch_common.c
+index 5841a7e..6b7cb67 100644
+--- a/src/dispatch_common.c
++++ b/src/dispatch_common.c
+@@ -290,6 +290,31 @@ library_init(void)
+     library_initialized = true;
+ }
+ 
++#if defined(__APPLE__)
++/*
++ * Bare library names are only searched for in the DYLD_* paths and the
++ * current directory, so a GL/EGL implementation installed next to libepoxy
++ * (such as ANGLE) would not be found. Try @rpath first; libepoxy carries an
++ * @loader_path rpath, so this resolves to libepoxy's own directory.
++ */
++static void *
++apple_dlopen(const char *lib_name, int flags)
++{
++    char path[256];
++    void *handle;
++
++    if (!strchr(lib_name, '/') &&
++        snprintf(path, sizeof(path), "@rpath/%s", lib_name) < (int)sizeof(path)) {
++        handle = dlopen(path, flags);
++        if (handle)
++            return handle;
++        (void)dlerror();
++    }
++
++    return dlopen(lib_name, flags);
++}
++#endif
++
+ static bool
+ get_dlopen_handle(void **handle, const char *lib_name, bool exit_on_fail, bool load)
+ {
+@@ -310,7 +335,11 @@ get_dlopen_handle(void **handle, const char *lib_name, bool exit_on_fail, bool l
+         if (!load)
+             flags |= RTLD_NOLOAD;
+ 
++#if defined(__APPLE__)
++        *handle = apple_dlopen(lib_name, flags);
++#else
+         *handle = dlopen(lib_name, flags);
++#endif
+         if (!*handle) {
+             if (exit_on_fail) {
+                 fprintf(stderr, "Couldn't open %s: %s\n", lib_name, dlerror());
+diff --git a/src/meson.build b/src/meson.build
+index e19a918..eb30e5a 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -66,6 +66,12 @@ if build_egl
+   epoxy_deps += [ elg_headers_dep, ]
+ endif
+ 
++epoxy_ldflags = common_ldflags
++if host_system == 'darwin'
++  # Lets apple_dlopen() find GL/EGL libraries installed next to libepoxy.
++  epoxy_ldflags += [ '-Wl,-rpath,@loader_path' ]
++endif
++
+ libepoxy = library(
+   'epoxy',
+   sources: epoxy_sources + epoxy_headers,
+@@ -75,7 +81,7 @@ libepoxy = library(
+   dependencies: epoxy_deps,
+   include_directories: libepoxy_inc,
+   c_args: common_cflags + visibility_cflags,
+-  link_args: common_ldflags,
++  link_args: epoxy_ldflags,
+ )
+ 
+ epoxy_has_glx = build_glx ? '1' : '0'

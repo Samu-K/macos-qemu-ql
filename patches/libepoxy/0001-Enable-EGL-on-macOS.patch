@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Date: Tue, 3 Nov 2026 17:46:12 +0200
+Subject: [PATCH 1/2] Enable EGL on macOS
+
+Use the .dylib names for EGL and GLES on Apple platforms and let
+ENABLE_EGL decide whether EGL is available instead of disabling it
+unconditionally. This allows loading ANGLE's libEGL/libGLESv2.
+
+Backport of the dispatch_common changes from upstream commit
+47d975d726ece5747333ccd9c96d2d76ac753924 ("Improve library detections",
+merged in anholt/libepoxy#239 after the 1.5.10 release). The Qt 5
+meson.build changes from that commit are not needed on macOS and are
+left out.
+---
+ src/dispatch_common.c | 5 +++--
+ src/dispatch_common.h | 2 +-
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/dispatch_common.c b/src/dispatch_common.c
+index 153eb7c..5841a7e 100644
+--- a/src/dispatch_common.c
++++ b/src/dispatch_common.c
+@@ -175,9 +175,10 @@
+ 
+ #if defined(__APPLE__)
+ #define GLX_LIB "/opt/X11/lib/libGL.1.dylib"
++#define EGL_LIB "libEGL.dylib"
+ #define OPENGL_LIB "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL"
+-#define GLES1_LIB "libGLESv1_CM.so"
+-#define GLES2_LIB "libGLESv2.so"
++#define GLES1_LIB "libGLESv1_CM.dylib"
++#define GLES2_LIB "libGLESv2.dylib"
+ #elif defined(__ANDROID__)
+ #define GLX_LIB "libGLESv2.so"
+ #define EGL_LIB "libEGL.so"
+diff --git a/src/dispatch_common.h b/src/dispatch_common.h
+index a136943..55388a8 100644
+--- a/src/dispatch_common.h
++++ b/src/dispatch_common.h
+@@ -28,7 +28,7 @@
+ #define PLATFORM_HAS_GLX ENABLE_GLX
+ #define PLATFORM_HAS_WGL 1
+ #elif defined(__APPLE__)
+-#define PLATFORM_HAS_EGL 0 
++#define PLATFORM_HAS_EGL ENABLE_EGL
+ #define PLATFORM_HAS_GLX ENABLE_GLX
+ #define PLATFORM_HAS_WGL 0
+ #elif defined(ANDROID)
