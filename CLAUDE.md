@@ -60,12 +60,17 @@ prefix/bin/qemu-system-aarch64 -M virt,accel=hvf -cpu host -m 4G \
 ## Conventions
 
 - Keep patches minimal: only what's required for GL on macOS. Unrelated fixes stay out.
+- Dependency policy: QEMU is configured with `--without-default-features` and an explicit feature list in
+  `scripts/build.sh`. The only external runtime libraries besides the GL stack are glib, pixman, libslirp and zstd.
+  Features needing only macOS frameworks or QEMU-bundled code (hvf, coreaudio, vmnet, vnc, virtfs, tools, fdt=internal,
+  common image formats) are fine. Adding another external library needs the user's approval.
+  Check with `otool -L prefix/bin/qemu-system-aarch64`.
 - Preserve upstream authorship in patches (`git am` keeps it). New patches get a commit message that explains *why*,
   in upstream style, so they could be sent upstream as-is.
 - Commits in this repo: plain messages, no Claude/AI attribution or `Co-Authored-By` trailers.
 - No remote yet; don't push or create GitHub repos unless asked.
 - Build host: Apple Silicon, macOS 15+, **full Xcode** plus its Metal toolchain
   (`xcodebuild -downloadComponent MetalToolchain`). ANGLE's Chromium build calls `xcodebuild` and precompiles Metal
-  shaders; the Command Line Tools alone are not enough. Homebrew: `meson ninja pkgconf glib pixman python`.
+  shaders; the Command Line Tools alone are not enough. Homebrew: `meson ninja pkgconf glib pixman libslirp zstd python`.
 - `build.sh` creates `build/venv` from Homebrew's python (QEMU needs >= 3.11; virglrenderer needs PyYAML).
 - ANGLE is built with the `gn`/`ninja` binaries gclient puts in `src/angle` (not depot_tools' wrappers).

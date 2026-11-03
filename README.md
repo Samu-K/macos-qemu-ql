@@ -1,73 +1,122 @@
 # macos-qemu-gl
 
-QEMU for macOS with **3D acceleration for guests**: `virtio-gpu-gl` with `-display cocoa,gl=on` or `gl=es`, running natively on Apple Silicon with HVF.
+**QEMU for macOS with hardware-accelerated 3D graphics for guests.**
 
-Upstream QEMU on macOS has no OpenGL display backend, so `virtio-gpu-gl` and `gl=on` aren't available there (they are on Linux). This project builds the **latest stable** QEMU and its GL stack with the few patches needed to close that gap.
+This repository builds the latest stable QEMU with `virtio-gpu-gl` (virgl) support on Apple Silicon. Linux guests get a GPU-accelerated OpenGL driver whose rendering runs on your Mac's GPU through Metal.
 
-> Status: work in progress. Builds from source; prebuilt binaries and a Homebrew tap are planned.
+## Why this exists
+
+On Linux, QEMU can give a guest an accelerated GPU: `-device virtio-gpu-gl -display gtk,gl=on`. The guest's Mesa `virgl` driver sends OpenGL commands to the host, which renders them on the real GPU.
+
+QEMU on macOS can't do this. Official builds, including Homebrew's `qemu`, have no OpenGL support in the Cocoa display, and macOS lacks the pieces virgl needs (EGL and OpenGL ES). Guests fall back to a software-rendered framebuffer, so desktops, browsers and anything 3D are slow.
+
+The required patches exist, mostly Akihiko Odaki's long-running macOS virgl work, but they aren't upstream yet. The community builds that carry them tend to lag far behind current releases. This repo applies them to the **latest stable release of every component** and keeps them there.
 
 ## How it works
 
 ```
- guest (Linux, Mesa virgl driver)
-        │  virgl command stream over virtio-gpu
+ Linux guest (Mesa virgl driver)
+        │ OpenGL commands over virtio-gpu
         ▼
- QEMU virtio-gpu-gl ──► virglrenderer ──► libepoxy ──┬─► gl=on : OpenGL.framework (CGL, GL 4.1 Core)
-                                                     └─► gl=es : ANGLE (EGL + GLES 3) ──► Metal
+ QEMU ──► virglrenderer ──► libepoxy ──┬─► gl=es: ANGLE (OpenGL ES) ──► Metal ──► GPU
+                                       └─► gl=on: Apple OpenGL.framework ───────► GPU
+        │
         ▼
- QEMU ui/cocoa: blits the guest scanout into a CAOpenGLLayer (gl=on)
-                or into a CAMetalLayer drawable via EGLImage (gl=es)
+ QEMU Cocoa window
 ```
 
-- **`gl=es` (recommended)**: GLES 3.0 through [ANGLE](https://chromium.googlesource.com/angle/angle)'s Metal backend. This is the actively maintained path on Apple GPUs.
-- **`gl=on`**: desktop OpenGL 4.1 Core through Apple's deprecated `OpenGL.framework`. No extra libraries, but Apple's GL is frozen at 4.1.
-
-## Components and patches
-
-| Component | Version | Patches |
+| Display mode | Host API | Notes |
 |---|---|---|
-| QEMU | 11.1.3 | `ui/cocoa`: GL support via CGL and ANGLE/EGL (Akihiko Odaki's series, v23); EGL build fix for macOS |
-| virglrenderer | 1.3.0 | GLES 3.0 blitter shaders; integer vertex attributes on ANGLE/Apple |
-| libepoxy | 1.5.10 | EGL on macOS (backport of an upstream change merged after 1.5.10); find EGL next to libepoxy via `@rpath`; resolve EGL 1.5 client functions before a display exists |
-| ANGLE | Chrome 156 stable (`chromium/8078`) | none |
+| `-display cocoa,gl=es` | OpenGL ES 3.0 via [ANGLE](https://chromium.googlesource.com/angle/angle) on Metal | **Recommended.** Uses the actively maintained Metal driver. |
+| `-display cocoa,gl=on` | OpenGL 4.1 Core via Apple's `OpenGL.framework` | No extra libraries, but Apple's OpenGL is deprecated and frozen at 4.1. |
 
-Exact refs live in [`versions.env`](versions.env) and patches in [`patches/`](patches/). Most of the patch work is by **Akihiko Odaki**, who wrote the original macOS virgl/ANGLE integration.
+### What's built
+
+| Component | Version |
+|---|---|
+| [QEMU](https://www.qemu.org) | 11.1.3 (`qemu-system-aarch64`, `qemu-system-x86_64`, `qemu-img`) |
+| [virglrenderer](https://gitlab.freedesktop.org/virgl/virglrenderer) | 1.3.0 |
+| [libepoxy](https://github.com/anholt/libepoxy) | 1.5.10 |
+| [ANGLE](https://chromium.googlesource.com/angle/angle) | Chrome 156 stable branch, Metal backend only |
+
+Each component is the upstream release plus the patches in [`patches/`](patches/). Exact refs are in [`versions.env`](versions.env).
+
+The only runtime libraries outside this stack are glib, pixman, libslirp and zstd from Homebrew.
+
+## Status
+
+Early, but working:
+- **Done:** the full stack builds, and QEMU boots UEFI firmware with HVF under both `gl=es` and `gl=on`.
+- **Not done yet:** accelerated rendering inside a Linux guest hasn't been verified.
+- **Planned:** prebuilt binaries and a Homebrew tap. Until those exist, build from source.
 
 ## Building
 
-Requirements: Apple Silicon Mac, macOS 15+, **Xcode** (not just the Command Line Tools) with the Metal toolchain, Homebrew, and about 30 GB of free disk (most of it for ANGLE's Chromium build dependencies).
+Requirements:
+- **Mac:** Apple Silicon running macOS 15 or later.
+- **Xcode:** the full app with its Metal toolchain. The Command Line Tools alone are not enough, because building ANGLE needs both.
+- **Homebrew.**
+- **Disk:** about 30 GB free, mostly for ANGLE's Chromium build dependencies.
 
-One-time Xcode setup. The full paths work even if `xcode-select` still points at the Command Line Tools; `build.sh` uses Xcode only for the ANGLE step.
+One-time Xcode setup. The full path works even when `xcode-select` points at the Command Line Tools.
 
 ```sh
 X=/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild
 sudo $X -license accept
-sudo $X -runFirstLaunch                 # installs frameworks the next step needs
-$X -downloadComponent MetalToolchain    # ~700 MB; Xcode 26+ ships it separately
+sudo $X -runFirstLaunch
+$X -downloadComponent MetalToolchain
 ```
 
-Then:
+Build:
 
 ```sh
-brew install meson ninja pkgconf glib pixman python
-scripts/fetch.sh    # clone pinned sources into src/, apply patches
-scripts/build.sh    # build and install into prefix/
+brew install meson ninja pkgconf glib pixman libslirp zstd python
+scripts/fetch.sh    # download pinned sources and apply patches  (first run: large ANGLE download)
+scripts/build.sh    # build everything and install into prefix/
 ```
 
-## Running
+The result is in `prefix/`. Binaries are in `prefix/bin`, and firmware is in `prefix/share/qemu`.
+
+## Usage
+
+The parts that enable acceleration are `-device virtio-gpu-gl-pci` and `-display cocoa,gl=es`. A complete example that installs an aarch64 Linux distribution from an ISO:
 
 ```sh
+cp prefix/share/qemu/edk2-arm-vars.fd vars.fd        # writable UEFI variable store, once per VM
+prefix/bin/qemu-img create -f qcow2 disk.qcow2 64G   # once per VM
+
 prefix/bin/qemu-system-aarch64 \
-    -M virt,accel=hvf -cpu host -smp 4 -m 4G \
-    -device virtio-gpu-gl-pci \
-    -display cocoa,gl=es \
-    -device qemu-xhci -device usb-kbd -device usb-tablet \
+    -M virt,accel=hvf -cpu host -smp 4 -m 8G \
     -drive if=pflash,format=raw,readonly=on,file=prefix/share/qemu/edk2-aarch64-code.fd \
-    -drive if=virtio,format=qcow2,file=disk.qcow2
+    -drive if=pflash,format=raw,file=vars.fd \
+    -device virtio-gpu-gl-pci -display cocoa,gl=es \
+    -device qemu-xhci -device usb-kbd -device usb-tablet \
+    -nic user,model=virtio-net-pci \
+    -drive if=virtio,format=qcow2,file=disk.qcow2 \
+    -device virtio-scsi-pci -device scsi-cd,drive=cd \
+    -drive if=none,id=cd,media=cdrom,readonly=on,file=installer.iso
 ```
 
-The guest needs Mesa's virgl driver, which every mainstream Linux distribution ships. Check inside the guest with `glxinfo -B` or `eglinfo -B`; the renderer should read `virgl`.
+After installation, drop the last two lines. To check that acceleration works, run this inside the guest:
+
+```sh
+glxinfo -B | grep renderer      # expect: OpenGL renderer string: virgl (...)
+```
+
+Things to know:
+- **Guests.** The guest needs Mesa's `virgl` driver, which every mainstream Linux distribution ships. Windows and macOS guests have no virgl driver.
+- **x86_64 guests.** `qemu-system-x86_64` uses software CPU emulation (TCG) on Apple Silicon, so it's slow, although the GPU path is the same.
+- **Vulkan.** Not supported; only OpenGL and OpenGL ES are accelerated.
+- **Bridged networking.** `-nic vmnet-shared` (vmnet) requires running QEMU as root.
+
+## Development
+
+[`CLAUDE.md`](CLAUDE.md) has the maintainer workflow: changing a patch, re-exporting patch files, and bumping a version.
+
+## Credits
+
+The macOS GL support in QEMU, virglrenderer, libepoxy and ANGLE is largely the work of **Akihiko Odaki**.
 
 ## License
 
-License for this repository's own scripts: not yet chosen. The patches and built binaries are under the licenses of their upstream projects (QEMU: GPL-2.0; virglrenderer, libepoxy: MIT; ANGLE: BSD-3-Clause).
+License for this repository's own scripts: not yet chosen. Patches and built binaries are under their upstream projects' licenses: QEMU GPL-2.0, virglrenderer and libepoxy MIT, ANGLE BSD-3-Clause.

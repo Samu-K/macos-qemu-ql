@@ -78,17 +78,32 @@ build_qemu() {
     local out="$BUILD/qemu"
     mkdir -p "$out"
     if [ ! -f "$out/build.ninja" ]; then
+        # Explicit feature list instead of auto-detection, so the result
+        # doesn't depend on what happens to be installed on the build host.
+        # External libraries: the GL stack plus glib, pixman, libslirp, zstd.
+        # The rest only needs macOS frameworks or code bundled with QEMU.
         (cd "$out" && "$SRC/qemu/configure" \
             --prefix="$PREFIX" \
             --target-list="$QEMU_TARGETS" \
+            --without-default-features \
+            --disable-werror \
             --enable-cocoa \
             --enable-opengl \
             --enable-virglrenderer \
             --enable-hvf \
-            --disable-sdl \
-            --disable-gtk \
-            --disable-docs \
-            --disable-werror)
+            --enable-pixman \
+            --enable-slirp \
+            --enable-zstd \
+            --enable-coreaudio \
+            --enable-vmnet \
+            --enable-vnc \
+            --enable-virtfs \
+            --enable-tools \
+            --enable-fdt=internal \
+            --enable-vdi \
+            --enable-vhdx \
+            --enable-vmdk \
+            --enable-vpc)
     fi
     make -C "$out" -j"$JOBS"
     make -C "$out" install
