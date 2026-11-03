@@ -39,7 +39,7 @@ fi
 QEMU_VERSION="${QEMU_REF#v}"
 if [ -z "${PACKAGE_VERSION:-}" ]; then
     PACKAGE_VERSION="$QEMU_VERSION-g$(git -C "$ROOT" rev-parse --short HEAD)"
-    [ -z "$(git -C "$ROOT" status --porcelain)" ] || PACKAGE_VERSION+=-dirty
+    [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ] || PACKAGE_VERSION+=-dirty
 fi
 PKG="$PACKAGE_NAME-$PACKAGE_VERSION"
 STAGE="$BUILD/package/$PKG"
@@ -420,7 +420,7 @@ make_source() {
     rm -rf "$dir"
     mkdir -p "$dir/upstream" "$dl"
 
-    [ -z "$(git -C "$ROOT" status --porcelain)" ] ||
+    [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ] ||
         log "warning: uncommitted changes in this repository are not in the source archive"
     git -C "$ROOT" archive --format=tar.gz --prefix="$PACKAGE_NAME/" -o "$dir/$PACKAGE_NAME.tar.gz" HEAD
 
