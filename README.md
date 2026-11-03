@@ -123,4 +123,6 @@ The macOS GL support in QEMU, virglrenderer, libepoxy and ANGLE is largely the w
 
 ## License
 
-License for this repository's own scripts: not yet chosen. Patches and built binaries are under their upstream projects' licenses: QEMU GPL-2.0, virglrenderer and libepoxy MIT, ANGLE BSD-3-Clause.
+This repository's own files (scripts, workflows, docs) are under the [MIT License](LICENSE).
+
+The patches in [`patches/`](patches/) modify upstream code and are under the license of the project they apply to, as are the built binaries: QEMU GPL-2.0, virglrenderer and libepoxy MIT, ANGLE BSD-3-Clause. A binary distribution of QEMU must therefore follow GPL-2.0, including offering the corresponding source (the pinned upstream refs plus these patches).
