@@ -18,6 +18,8 @@
 #   TEST_ACCEL    accelerator (default: hvf if the host supports it, else tcg;
 #                 GitHub's macOS runners are VMs without nested virtualization)
 #   TEST_TIMEOUT  seconds to wait for each boot (default: 180)
+#   SIGN_IDENTITY as for scripts/package.sh: when it is a Developer ID, the
+#                 bundle test requires the package to be signed with it
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -237,15 +239,36 @@ test_bundle() {
         if ! codesign --verify --strict "$f" 2>/dev/null; then
             fail "$(basename "$f") has an invalid code signature"
             ok=0
+        # Capture first: grep -q exiting early would SIGPIPE codesign (pipefail).
+        elif [[ "$(codesign -dv "$f" 2>&1)" != *"CodeDirectory"*"flags="*"runtime"* ]]; then
+            fail "$(basename "$f") is not signed with the hardened runtime"
+            ok=0
         fi
     done
     if [ $ok -eq 1 ]; then
-        pass "all libraries bundled and linked via @rpath, signatures valid"
+        pass "all libraries bundled and linked via @rpath, signatures valid, hardened runtime"
     fi
 
-    codesign -d --entitlements - "$QEMU" 2>/dev/null | grep -q com.apple.security.hypervisor &&
-        pass "qemu-system-aarch64 keeps the hypervisor entitlement" ||
-        fail "qemu-system-aarch64 lost the hypervisor entitlement"
+    local ent e
+    ent="$(codesign -d --entitlements - --xml "$QEMU" 2>/dev/null)"
+    for e in com.apple.security.hypervisor com.apple.security.cs.allow-jit; do
+        [[ "$ent" == *"<key>$e</key>"* ]] &&
+            pass "qemu-system-aarch64 has entitlement $e" ||
+            fail "qemu-system-aarch64 lacks entitlement $e"
+    done
+
+    local authority
+    authority="$(codesign -dv --verbose=2 "$QEMU" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
+    if [ -n "${SIGN_IDENTITY:-}" ] && [ "$SIGN_IDENTITY" != - ]; then
+        [[ "$authority" == "Developer ID Application:"* ]] &&
+            pass "signed by $authority" ||
+            fail "expected a Developer ID signature, got: ${authority:-ad hoc}"
+        [[ "$ent" != *disable-library-validation* ]] &&
+            pass "library validation enabled" ||
+            fail "a Developer ID package must not disable library validation"
+    else
+        pass "signed ${authority:+by $authority}${authority:-ad hoc}"
+    fi
 
     # QEMU reports the physical path (/tmp is a symlink to /private/tmp).
     "$QEMU" -L help | grep -qxF "$(cd -P "$PREFIX" && pwd)/bin/../share/qemu" &&

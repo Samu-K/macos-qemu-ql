@@ -33,11 +33,12 @@ How `package.sh` builds it:
 2. **Bundle.** Follows every non-system library link from the binaries and copies the Homebrew libraries into `lib/`.
    Every reference is rewritten to `@rpath/<name>`. Binaries get the rpath `@executable_path/../lib` and libraries get
    `@loader_path`. The link targets must be our own libraries or Homebrew kegs; anything else is an error.
-3. **Re-sign.** `install_name_tool` invalidates code signatures, so every Mach-O file is signed again ad hoc. The
-   existing entitlements are kept, including the `com.apple.security.hypervisor` entitlement HVF needs.
+3. **Sign.** `install_name_tool` invalidates code signatures, so every Mach-O file is signed again, with the hardened
+   runtime. See [Signing and notarization](#signing-and-notarization).
 4. **Licenses.** Collected from the component sources and the Homebrew kegs. For ANGLE, `gn desc` lists the
    `third_party` code `libEGL`/`libGLESv2` link, and each `README.chromium` names the license file.
-5. **Archive.** Writes an xz tarball with no AppleDouble files or extended attributes.
+5. **Notarize.** Only with a Developer ID and notary credentials.
+6. **Archive.** Writes an xz tarball with no AppleDouble files or extended attributes.
 
 Runtime lookups are already relative, so nothing else needs rewriting:
 - QEMU finds `share/qemu` relative to its executable.
@@ -54,13 +55,69 @@ The minimum macOS version is whatever the build host and Homebrew's bottles targ
 against it. It adds the `bundle` test, which checks:
 
 - every non-system library link is `@rpath/<name>` and the library is in the package, and there are no other rpaths;
-- every code signature verifies, and `qemu-system-aarch64` still has the hypervisor entitlement;
+- every code signature verifies and uses the hardened runtime;
+- `qemu-system-aarch64` has the hypervisor and JIT entitlements;
+- when `SIGN_IDENTITY` is a Developer ID: the package is signed with a Developer ID and library validation is on;
 - QEMU's firmware search path (`-L help`) is inside the package;
 - in the `gl=es` boot, nothing is loaded from Homebrew or this repository's build tree (`vmmap`), and ANGLE comes from
   the package.
 
 `scripts/ci.sh` runs `package` and `test-package` as its last two stages. CI uploads the tarball as the `package`
 artifact.
+
+## Signing and notarization
+
+`SIGN_IDENTITY` selects the signing identity. It defaults to `-`, ad hoc.
+
+Every file is signed with the hardened runtime, which notarization requires. QEMU's system emulators get these
+entitlements (`entitlements()` in `package.sh`):
+
+| Entitlement | Binaries | Why |
+|---|---|---|
+| `com.apple.security.hypervisor` | `qemu-system-aarch64` | HVF |
+| `com.apple.security.cs.allow-jit` | `qemu-system-*` | TCG's code buffer is `MAP_JIT` memory |
+| `com.apple.security.device.audio-input` | `qemu-system-*` | audio capture with `-audiodev coreaudio` |
+| `com.apple.security.cs.disable-library-validation` | all of `bin/`, **ad hoc only** | ad hoc signatures have no team ID, and library validation only accepts the binary's own team |
+
+Ad hoc packages use the hardened runtime too. That way CI runs the tests under the same restrictions a release has;
+CI uses TCG, so this covers the JIT entitlement.
+
+With a `Developer ID Application` identity, the files also get a secure timestamp. The staged directory is then
+zipped and submitted to Apple's notary service, and `package.sh` waits for the result. A rejection fails the
+build and prints the notary log. Bare executables can't carry a stapled ticket, so Gatekeeper checks the
+notarization online the first time a quarantined binary runs.
+
+### Signing locally
+
+Requires a `Developer ID Application` certificate in the login keychain (`security find-identity -v -p codesigning`)
+and notary credentials stored once in the keychain:
+
+```sh
+xcrun notarytool store-credentials macos-qemu-gl \
+    --key AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <issuer-uuid>
+
+SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)" NOTARY_PROFILE=macos-qemu-gl scripts/package.sh
+SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)" scripts/test.sh --package dist/<name>-macos-arm64.tar.xz
+```
+
+### Signing in the release workflow
+
+`release.yml` signs and notarizes when these repository secrets exist (Settings → Secrets and variables → Actions).
+Without them, the release is signed ad hoc and the run shows a warning.
+
+| Secret | Value |
+|---|---|
+| `MACOS_CERTIFICATE_P12` | the Developer ID Application certificate and private key, exported from Keychain Access as `.p12`, then `base64 -i cert.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | the `.p12` export password |
+| `NOTARY_KEY_P8` | contents of the App Store Connect API key file `AuthKey_<id>.p8` |
+| `NOTARY_KEY_ID` | that key's ID |
+| `NOTARY_ISSUER_ID` | the issuer ID shown above the key list |
+
+How to get them:
+- **Certificate:** in Xcode → Settings → Accounts → Manage Certificates → + → *Developer ID Application*. Only the
+  team's Account Holder can create one.
+- **API key:** in App Store Connect → Users and Access → Integrations → Team Keys, create a key with the *Developer*
+  role. The `.p8` file can be downloaded only once.
 
 ## Source archive and licensing
 
@@ -92,18 +149,18 @@ git push origin v11.1.3-1
 
 The tag triggers `.github/workflows/release.yml`:
 1. It checks that the tag matches the QEMU version in `versions.env`.
-2. It runs `scripts/ci.sh` with the source archive enabled.
-3. It creates a **draft** release with the tarball, the source archive and their checksums, plus generated notes
+2. It imports the signing certificate and notary key, if they're configured.
+3. It runs `scripts/ci.sh` with the source archive enabled. This signs and notarizes the package, then tests it
+   with the Developer ID checks.
+4. It creates a **draft** release with the tarball, the source archive and their checksums, plus generated notes
    listing component versions and install commands.
 
 Review the draft on GitHub and publish it.
 
 ## Not done yet
 
-- **Developer ID signing and notarization.** The binaries are only signed ad hoc. That's enough when the archive is
-  downloaded with `curl` or Homebrew. A browser download is quarantined, and macOS refuses to run its binaries until
-  the user runs `xattr -dr com.apple.quarantine <dir>`; the package README explains this. Proper signing needs a paid
-  Apple Developer account and signing secrets in CI.
+- **First signed release.** Signing and notarization are implemented but haven't been run with a real Developer ID
+  yet. Run them locally once (see [Signing locally](#signing-locally)) before relying on CI.
 - **Homebrew tap.** The plan is a separate `homebrew-<name>` repository whose formula installs the release tarball.
   The tarball is self-contained, so the formula needs no dependencies, only `conflicts_with "qemu"`.
 - **Intel Macs.** The package is arm64 only.

@@ -8,8 +8,8 @@
 #   <name>-<version>-macos-arm64.tar.xz (+ .sha256)
 #       QEMU, the GL stack and the Homebrew libraries it links (glib, pixman,
 #       libslirp, zstd and their dependencies), with install names rewritten
-#       to @rpath and every binary re-signed ad hoc, so it runs from any
-#       directory without Homebrew. Includes all licenses.
+#       to @rpath, so it runs from any directory without Homebrew. Every
+#       binary is re-signed with the hardened runtime. Includes all licenses.
 #   <name>-<version>-source.tar (with --source)
 #       Corresponding source for a binary release: this repository (build
 #       scripts and patches), the QEMU release tarball, and the upstream
@@ -18,6 +18,12 @@
 # Environment:
 #   PACKAGE_VERSION  version in the file names (default: <qemu version>-g<commit>,
 #                    plus -dirty when this repository has uncommitted changes)
+#   SIGN_IDENTITY    codesign identity (default: - for ad hoc). With a
+#                    "Developer ID Application: ..." identity the package is
+#                    signed for distribution and notarized, given credentials:
+#   NOTARY_PROFILE   notarytool keychain profile (xcrun notarytool store-credentials), or
+#   NOTARY_KEY, NOTARY_KEY_ID, NOTARY_ISSUER
+#                    App Store Connect API key file (.p8), its ID and issuer ID
 #
 # Test the result with: scripts/test.sh --package dist/<name>-<version>-macos-arm64.tar.xz
 
@@ -39,6 +45,8 @@ PKG="$PACKAGE_NAME-$PACKAGE_VERSION"
 STAGE="$BUILD/package/$PKG"
 TARBALL="$DIST/$PKG-macos-arm64.tar.xz"
 ORIGINS="$BUILD/package/$PKG.origins"
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+notarized=0
 
 [ -x "$PREFIX/bin/qemu-system-aarch64" ] || die "$PREFIX has no QEMU; run scripts/build.sh first"
 
@@ -85,7 +93,7 @@ brew_keg() {
 
 stage_files() {
     log "staging $PKG"
-    rm -rf "$STAGE"
+    rm -rf "$BUILD/package"   # earlier versions, notarization leftovers
     mkdir -p "$STAGE/bin" "$STAGE/lib" "$STAGE/share"
 
     local f
@@ -151,10 +159,82 @@ bundle_libs() {
             fi
         done < <(rpaths "$f")
         rpaths "$f" | grep -qxF "$want" || change_names -add_rpath "$want" "$f"
-        # install_name_tool invalidates the signature; keep the entitlements
-        # (QEMU's com.apple.security.hypervisor for HVF).
-        codesign --force --sign - --preserve-metadata=entitlements "$f" 2>/dev/null
     done
+}
+
+# entitlements <file>: the entitlements it is signed with, one per line.
+entitlements() {
+    # Library validation only accepts libraries signed by the same team, and
+    # ad hoc signatures have no team.
+    if [ "$SIGN_IDENTITY" = - ] && [[ "$1" != *.dylib ]]; then
+        echo com.apple.security.cs.disable-library-validation
+    fi
+    case "$1" in
+        # HVF; TCG's JIT (MAP_JIT code buffer); audio capture for -audiodev coreaudio.
+        qemu-system-aarch64)
+            echo com.apple.security.hypervisor
+            echo com.apple.security.cs.allow-jit
+            echo com.apple.security.device.audio-input ;;
+        # No HVF: x86_64 guests on Apple Silicon always run under TCG.
+        qemu-system-*)
+            echo com.apple.security.cs.allow-jit
+            echo com.apple.security.device.audio-input ;;
+    esac
+}
+
+# Sign everything with the hardened runtime, which notarization requires. Ad
+# hoc packages get it too, so CI tests run under the same restrictions as a
+# release (the JIT entitlement for TCG, for example). install_name_tool already
+# invalidated the original signatures.
+sign_files() {
+    log "signing with identity: $SIGN_IDENTITY"
+    local f name plist args
+    for f in "$STAGE"/lib/*.dylib "$STAGE"/bin/*; do
+        is_macho "$f" || continue
+        name="$(basename "$f")"
+        args=(--force --sign "$SIGN_IDENTITY" --options runtime)
+        [ "$SIGN_IDENTITY" = - ] || args+=(--timestamp)
+        if [ -n "$(entitlements "$name")" ]; then
+            plist="$BUILD/package/$name.entitlements"
+            {
+                echo '<?xml version="1.0" encoding="UTF-8"?>'
+                echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+                echo '<plist version="1.0"><dict>'
+                entitlements "$name" | sed 's|.*|<key>&</key><true/>|'
+                echo '</dict></plist>'
+            } >"$plist"
+            args+=(--entitlements "$plist")
+        fi
+        codesign "${args[@]}" "$f"
+    done
+}
+
+# Submit the signed files to Apple's notary service. Bare Mach-O files can't
+# carry a stapled ticket; Gatekeeper looks the ticket up online instead.
+notarize() {
+    local creds=()
+    if [ -n "${NOTARY_PROFILE:-}" ]; then
+        creds=(--keychain-profile "$NOTARY_PROFILE")
+    elif [ -n "${NOTARY_KEY:-}" ]; then
+        creds=(--key "$NOTARY_KEY" --key-id "${NOTARY_KEY_ID:?}" --issuer "${NOTARY_ISSUER:?}")
+    else
+        log "warning: no notary credentials (NOTARY_PROFILE or NOTARY_KEY); not notarizing"
+        return 0
+    fi
+    local zip="$BUILD/package/$PKG-notarize.zip" result id status
+    log "notarizing (this usually takes a few minutes)"
+    rm -f "$zip"
+    ditto -c -k --keepParent "$STAGE" "$zip"
+    result="$(xcrun notarytool submit "$zip" "${creds[@]}" --wait --output-format json)"
+    rm -f "$zip"
+    id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$result")"
+    status="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["status"])' "$result")"
+    if [ "$status" != Accepted ]; then
+        xcrun notarytool log "$id" "${creds[@]}" >&2 || true
+        die "notarization $id: $status"
+    fi
+    log "notarization $id: $status"
+    notarized=1
 }
 
 # license_files <dir>: license files at the top of a source or keg directory.
@@ -250,6 +330,20 @@ min_macos() {
     done | sort -V | tail -1
 }
 
+quarantine_note() {
+    if [ $notarized -eq 1 ]; then
+        echo "The binaries are signed with a Developer ID and notarized by Apple."
+        return
+    fi
+    cat <<EOF
+The binaries are not notarized. If macOS refuses to run them ("cannot be
+verified"), the archive was downloaded with a browser and is quarantined.
+Clear the flag once:
+
+    xattr -dr com.apple.quarantine $PKG
+EOF
+}
+
 write_readme() {
     local formula version keg min
     min="$(min_macos)"
@@ -264,10 +358,7 @@ Requires macOS $min or later.
 This directory is self-contained: it doesn't need Homebrew and can be moved
 anywhere. Add \`bin/\` to your PATH or run the binaries by their full path.
 
-If macOS refuses to run the binaries ("cannot be verified"), the archive was
-downloaded with a browser and is quarantined. Clear the flag once:
-
-    xattr -dr com.apple.quarantine $PKG
+$(quarantine_note)
 
 ## Example
 
@@ -385,7 +476,9 @@ EOF
 stage_files
 record_origins
 bundle_libs
+sign_files
 write_licenses
+[ "$SIGN_IDENTITY" = - ] || notarize
 write_readme
 make_tarball
 if [ $with_source -eq 1 ]; then

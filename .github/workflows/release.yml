@@ -4,6 +4,9 @@ name: Release
 # the binary package from scratch and attaches it, with the corresponding
 # source archive, to a draft GitHub release. Review the draft and publish it.
 # <n> counts releases of the same QEMU version (other components, patches).
+#
+# With the signing secrets set (docs/packaging.md), the package is signed with
+# a Developer ID and notarized; without them it is signed ad hoc.
 on:
   push:
     tags: ["v*"]
@@ -31,6 +34,49 @@ jobs:
             exit 1
           fi
           echo "PACKAGE_VERSION=$version" >>"$GITHUB_ENV"
+
+      - name: Set up signing
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          if [ -z "$CERTIFICATE_P12" ]; then
+            echo "::warning::No signing secrets; the release is signed ad hoc and not notarized."
+            exit 0
+          fi
+          if [ -z "$NOTARY_KEY_P8" ] || [ -z "$NOTARY_KEY_ID" ] || [ -z "$NOTARY_ISSUER_ID" ]; then
+            echo "::error::MACOS_CERTIFICATE_P12 is set but the NOTARY_* secrets are incomplete"
+            exit 1
+          fi
+
+          # A throwaway keychain that codesign can use without a prompt.
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          pw="$(uuidgen)"
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          echo "$CERTIFICATE_P12" | base64 --decode >"$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" login.keychain-db
+
+          identity="$(security find-identity -v -p codesigning "$kc" |
+            sed -n 's/.*"\(Developer ID Application: .*\)"$/\1/p' | head -1)"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE_P12 contains no Developer ID Application identity"
+            exit 1
+          fi
+          printf '%s\n' "$NOTARY_KEY_P8" >"$RUNNER_TEMP/notary.p8"
+          {
+            echo "SIGN_IDENTITY=$identity"
+            echo "NOTARY_KEY=$RUNNER_TEMP/notary.p8"
+            echo "NOTARY_KEY_ID=$NOTARY_KEY_ID"
+            echo "NOTARY_ISSUER=$NOTARY_ISSUER_ID"
+          } >>"$GITHUB_ENV"
 
       - uses: ./.github/actions/setup-build-env
 

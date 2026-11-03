@@ -9,7 +9,8 @@
 #
 # Environment:
 #   CI_SOURCE_ARCHIVE=1  also write the source archive (scripts/package.sh --source)
-#   PACKAGE_VERSION      passed on to scripts/package.sh
+#   PACKAGE_VERSION, SIGN_IDENTITY, NOTARY_*
+#                        passed on to scripts/package.sh (and SIGN_IDENTITY to test.sh)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
