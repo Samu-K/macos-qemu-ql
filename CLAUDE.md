@@ -14,7 +14,9 @@ QEMU for macOS with OpenGL acceleration for guests (`virtio-gpu-gl` + `-display 
 
 - `versions.env`: pinned upstream URLs and refs. This is the only place versions live.
 - `patches/<component>/*.patch`: our changes, as `git format-patch` series applied with `git am`.
-- `scripts/`: `fetch.sh`, `build.sh`, `export-patches.sh`, shared setup in `common.sh`.
+- `scripts/`: `fetch.sh`, `build.sh`, `test.sh`, `export-patches.sh`, `check-updates.sh`, `ci.sh` (CI entry point),
+  shared setup in `common.sh`.
+- `.github/`: `ci.yml` (PRs/main), `nightly-updates.yml` (automatic version bumps); see `docs/ci.md`.
 - `docs/`: user and maintainer documentation.
 - Generated and gitignored: `src/` (upstream checkouts), `build/` (build trees), `prefix/` (install), `dist/` (packages).
 - `example-case/`: imported reference only (gitignored, will be deleted). Never reference it from scripts or docs.
@@ -29,6 +31,10 @@ scripts/build.sh                      # build + install everything into prefix/ 
 scripts/build.sh qemu                 # rebuild one component (incremental)
 rm -rf build/qemu && scripts/build.sh qemu   # clean rebuild of one component
 scripts/export-patches.sh qemu        # write src/qemu commits (upstream..macos-gl) back to patches/qemu/
+scripts/test.sh                       # test prefix/ (opens QEMU windows briefly); scripts/test.sh boot-es for one test
+scripts/check-updates.sh              # list newer upstream stable releases
+scripts/check-updates.sh --apply qemu # pin the newest qemu in versions.env (+ README table)
+scripts/ci.sh                         # what CI runs: fetch --reset, build, test, with logs in logs/
 ```
 
 Each `src/<component>` is a shallow git checkout with branch `upstream` (the pinned ref) and
@@ -43,8 +49,8 @@ branch `macos-gl` (upstream + our patches, checked out).
 
 ### Bumping a version
 
-1. Edit the ref in `versions.env` (latest *stable* release only. For ANGLE use the `chromium/<build>` branch
-   of current Chrome stable; see https://chromiumdash.appspot.com/releases?platform=Mac).
+1. `scripts/check-updates.sh --apply <component>` (or edit `versions.env` by hand: latest *stable* release only;
+   for ANGLE the `chromium/<build>` branch of current Chrome stable). The nightly workflow does this automatically.
 2. `scripts/fetch.sh <component>` re-fetches and re-applies patches. If `git am` fails, resolve in
    `src/<component>` (`git am --continue`), then `scripts/export-patches.sh <component>`.
 3. Drop patches that upstream has merged.
@@ -59,6 +65,7 @@ prefix/bin/qemu-system-aarch64 -M virt,accel=hvf -cpu host -m 4G \
 
 ## Conventions
 
+- Lint before committing: `shellcheck -x -S warning scripts/*.sh` and `actionlint`.
 - Keep patches minimal: only what's required for GL on macOS. Unrelated fixes stay out.
 - Dependency policy: QEMU is configured with `--without-default-features` and an explicit feature list in
   `scripts/build.sh`. The only external runtime libraries besides the GL stack are glib, pixman, libslirp and zstd.

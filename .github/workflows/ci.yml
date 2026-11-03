@@ -1,0 +1,39 @@
+name: CI
+
+# Full fetch + build + test. Runs on pull requests (including pushes a
+# maintainer makes to a failed nightly update branch) and on main.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-build-env
+
+      - name: Fetch, build and test
+        run: scripts/ci.sh
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs/
+          if-no-files-found: ignore

@@ -1,4 +1,6 @@
 # shellcheck shell=bash
+# Variables here are used by the scripts that source this file.
+# shellcheck disable=SC2034
 # Shared setup for scripts/*.sh. Source, don't execute.
 
 set -euo pipefail
@@ -19,7 +21,7 @@ COMPONENTS=(angle libepoxy virglrenderer qemu)
 # Branch in src/<component> that carries our patches on top of the pinned ref.
 PATCH_BRANCH=macos-gl
 
-JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
+JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc)}"
 
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 

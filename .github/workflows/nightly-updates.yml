@@ -1,0 +1,158 @@
+name: Nightly dependency updates
+
+# Every night: look for new stable releases of QEMU, virglrenderer, libepoxy
+# and ANGLE (Chrome stable). For each one found, pin it on a branch
+# update/<component>-<version>, then fetch, build and test.
+#   - pass: open a pull request and merge it
+#   - fail: open a pull request and an issue naming the failing stage
+# A version whose branch already exists is skipped: it is waiting for a
+# maintainer (see docs/ci.md).
+
+on:
+  schedule:
+    - cron: "23 2 * * *"  # 02:23 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: nightly-updates
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check for new releases
+    runs-on: ubuntu-latest
+    outputs:
+      updates: ${{ steps.check.outputs.updates }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Find updates
+        id: check
+        run: |
+          scripts/check-updates.sh
+          all="$(scripts/check-updates.sh --json)"
+          pending="$(git ls-remote --heads origin 'refs/heads/update/*' | sed 's#.*refs/heads/##')"
+          updates="$(ALL="$all" PENDING="$pending" python3 -c '
+          import json, os, sys
+          pending = set(os.environ["PENDING"].split())
+          todo = []
+          for u in json.loads(os.environ["ALL"]):
+              if u["branch"] in pending:
+                  print("skipping", u["branch"], "(branch exists)", file=sys.stderr)
+              else:
+                  todo.append(u)
+          print(json.dumps(todo))
+          ')"
+          echo "updates=$updates" >>"$GITHUB_OUTPUT"
+          echo "Updates to try: $updates"
+
+  update:
+    name: Update ${{ matrix.component }} to ${{ matrix.latest }}
+    needs: check
+    if: needs.check.outputs.updates != '[]'
+    runs-on: macos-15
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      # One at a time: each merge changes versions.env on main, and every job
+      # should start from the result of the previous one.
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.check.outputs.updates) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COMPONENT: ${{ matrix.component }}
+      CURRENT: ${{ matrix.current }}
+      LATEST: ${{ matrix.latest }}
+      BRANCH: ${{ matrix.branch }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Pin ${{ matrix.component }} ${{ matrix.latest }}
+        id: pin
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          scripts/check-updates.sh --apply "$COMPONENT"
+          git commit -am "Update $COMPONENT to $LATEST" \
+            -m "Previously $CURRENT. Automated update from the nightly workflow."
+          git push origin "$BRANCH"
+
+      - uses: ./.github/actions/setup-build-env
+
+      - name: Fetch, build and test
+        id: ci
+        run: scripts/ci.sh
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.component }}-${{ matrix.latest }}
+          path: logs/
+          if-no-files-found: ignore
+
+      - name: Open pull request
+        id: pr
+        if: always() && steps.pin.outcome == 'success'
+        run: |
+          if [ "${{ steps.ci.outcome }}" = success ]; then
+            result="Fetch, build and test passed; merging automatically."
+          else
+            result="**Failed** at stage \`$(cat logs/failed-stage 2>/dev/null || echo setup)\`. See the linked issue."
+          fi
+          url="$(gh pr create --base main --head "$BRANCH" \
+            --title "Update $COMPONENT to $LATEST" \
+            --body "Nightly update of **$COMPONENT** from \`$CURRENT\` to \`$LATEST\`.
+
+          $result
+
+          Run: $RUN_URL")"
+          echo "url=$url" >>"$GITHUB_OUTPUT"
+
+          # Older update PRs for the same component are now obsolete.
+          gh pr list --state open --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"update/$COMPONENT-\")) | select(.headRefName != \"$BRANCH\") | .number" |
+          while read -r n; do
+            gh pr close "$n" --delete-branch --comment "Superseded by $url"
+          done
+
+      - name: Merge
+        if: steps.ci.outcome == 'success' && steps.pr.outcome == 'success'
+        run: gh pr merge "${{ steps.pr.outputs.url }}" --squash --delete-branch
+
+      - name: Open issue
+        if: failure() && steps.pr.outcome == 'success'
+        run: |
+          stage="$(cat logs/failed-stage 2>/dev/null || echo setup)"
+          {
+            echo "The nightly update of **$COMPONENT** from \`$CURRENT\` to \`$LATEST\` failed at stage **$stage**."
+            echo
+            echo "- Pull request: ${{ steps.pr.outputs.url }}"
+            echo "- Run and full logs: $RUN_URL"
+            echo
+            echo "To fix it, push to \`$BRANCH\`; CI runs on the pull request. See docs/ci.md."
+            if [ -f "logs/$stage.log" ]; then
+              echo
+              echo "<details><summary>Last lines of $stage.log</summary>"
+              echo
+              echo '```'
+              tail -n 80 "logs/$stage.log" | sed 's/\x1b\[[0-9;]*m//g'
+              echo '```'
+              echo "</details>"
+            fi
+          } >issue.md
+          gh label create dependency-update --color 0366d6 \
+            --description "Automated dependency update" --force
+          issue="$(gh issue create --title "Update $COMPONENT to $LATEST fails at $stage" \
+            --label dependency-update --body-file issue.md)"
+          gh pr comment "${{ steps.pr.outputs.url }}" --body "Tracking issue: $issue"

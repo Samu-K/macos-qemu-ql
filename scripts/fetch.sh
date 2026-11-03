@@ -94,9 +94,28 @@ sync_angle() (
     export DEPOT_TOOLS_UPDATE=0
     export PATH="$SRC/depot_tools:$PATH"
     log "angle: syncing third-party dependencies (large download on first run)"
-    if [ ! -f "$dir/.gclient" ]; then
-        (cd "$dir" && python3 scripts/bootstrap.py)
-    fi
+    # Same as ANGLE's scripts/bootstrap.py, minus dependencies that only the
+    # backends/tests we don't build need (~7 GB): OpenCL (LLVM sources),
+    # WebGPU (Dawn), Vulkan (SwiftShader, conformance tests), perf tooling.
+    cat >"$dir/.gclient" <<'GCLIENT'
+solutions = [
+  {
+    "name": ".",
+    "url": "https://chromium.googlesource.com/angle/angle.git",
+    "deps_file": "DEPS",
+    "managed": False,
+    "custom_vars": {
+      "checkout_angle_cl_deps": False,
+      "checkout_angle_dawn_deps": False,
+    },
+    "custom_deps": {
+      "third_party/SwiftShader": None,
+      "third_party/VK-GL-CTS/src": None,
+      "third_party/catapult": None,
+    },
+  },
+]
+GCLIENT
     (cd "$dir" && gclient sync --no-history --shallow -D)
 )
 

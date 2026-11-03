@@ -32,12 +32,14 @@ The required patches exist, mostly Akihiko Odaki's long-running macOS virgl work
 
 ### What's built
 
+<!-- versions:start -->
 | Component | Version |
 |---|---|
 | [QEMU](https://www.qemu.org) | 11.1.3 (`qemu-system-aarch64`, `qemu-system-x86_64`, `qemu-img`) |
 | [virglrenderer](https://gitlab.freedesktop.org/virgl/virglrenderer) | 1.3.0 |
 | [libepoxy](https://github.com/anholt/libepoxy) | 1.5.10 |
-| [ANGLE](https://chromium.googlesource.com/angle/angle) | Chrome 156 stable branch, Metal backend only |
+| [ANGLE](https://chromium.googlesource.com/angle/angle) | Chrome 156 stable branch (`chromium/8078`), Metal backend only |
+<!-- versions:end -->
 
 Each component is the upstream release plus the patches in [`patches/`](patches/). Exact refs are in [`versions.env`](versions.env).
 
@@ -112,6 +114,8 @@ Things to know:
 ## Development
 
 [`CLAUDE.md`](CLAUDE.md) has the maintainer workflow: changing a patch, re-exporting patch files, and bumping a version.
+
+A nightly GitHub Actions job checks for new upstream releases, then builds and tests them. Passing updates are merged automatically; failing ones get a pull request and an issue. See [`docs/ci.md`](docs/ci.md).
 
 ## Credits
 

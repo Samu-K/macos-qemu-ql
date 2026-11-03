@@ -1,0 +1,29 @@
+name: Set up build environment
+description: Homebrew build dependencies, the newest installed Xcode and its Metal toolchain.
+
+runs:
+  using: composite
+  steps:
+    - name: Homebrew packages
+      shell: bash
+      run: brew install meson ninja pkgconf glib pixman libslirp zstd python
+
+    - name: Xcode and Metal toolchain
+      shell: bash
+      run: |
+        # ANGLE follows Chrome, which builds against a recent SDK: use the
+        # newest stable Xcode on the runner image.
+        xcode="$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)"
+        if [ -n "$xcode" ]; then
+          sudo xcode-select -s "$xcode"
+        fi
+        xcodebuild -version
+        # Xcode 26+ ships the Metal compiler as a separate download.
+        if ! xcrun metal --version >/dev/null 2>&1; then
+          xcodebuild -downloadComponent MetalToolchain
+        fi
+        xcrun metal --version
+
+    - name: Disk space
+      shell: bash
+      run: df -h /
