@@ -212,13 +212,18 @@ brew uninstall qemu-gl && brew untap local/qemu-gl
 1. **Signing secrets** for `release.yml`, see [Signing in the release workflow](#signing-in-the-release-workflow).
 2. **The tap repository.** Create the public repository `Samu-K/homebrew-tap` with a README, so it has a default
    branch. The workflow adds `Formula/`.
-3. **`TAP_GITHUB_TOKEN`**, a repository secret in this repository that can push to the tap. Create a fine-grained
-   personal access token (GitHub → Settings → Developer settings → Fine-grained tokens) with access to
-   `Samu-K/homebrew-tap` only and the permission *Contents: Read and write*. Then
-   `gh secret set TAP_GITHUB_TOKEN`. Tokens expire; renew it before the expiry date it was given.
+3. **`TAP_DEPLOY_KEY`**, a repository secret in this repository holding the private half of an SSH deploy key that
+   has write access to the tap and nothing else. It doesn't expire. To create or replace it:
 
-Without `TAP_GITHUB_TOKEN`, the release is still published, and the tap job fails with an error naming the
-secret. Re-run it with `gh workflow run homebrew-tap.yml -f tag=<tag>` once the secret exists.
+   ```sh
+   ssh-keygen -t ed25519 -N '' -C homebrew-tap-deploy -f tap_key
+   gh repo deploy-key add tap_key.pub -R Samu-K/homebrew-tap --allow-write --title "macos-qemu-ql releases"
+   gh secret set TAP_DEPLOY_KEY -R Samu-K/macos-qemu-ql <tap_key
+   rm tap_key tap_key.pub
+   ```
+
+Without `TAP_DEPLOY_KEY`, the release is still published, and the tap job fails with an error naming the secret.
+Re-run it with `gh workflow run homebrew-tap.yml -f tag=<tag>` once the secret exists.
 
 ## Not done yet
 
