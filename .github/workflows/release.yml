@@ -142,6 +142,7 @@ jobs:
             echo "With Homebrew (replaces Homebrew's \`qemu\`; \`brew unlink qemu\` first if you have it):"
             echo
             echo '```sh'
+            echo "brew trust $tap"
             echo "brew install $tap/qemu-gl"
             echo '```'
             echo

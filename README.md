@@ -49,6 +49,7 @@ With Homebrew:
 
 ```sh
 brew unlink qemu              # only if Homebrew's qemu is installed; the two conflict
+brew trust samu-k/tap         # lets Homebrew load (and `brew upgrade`) formulae from this tap
 brew install samu-k/tap/qemu-gl
 ```
 

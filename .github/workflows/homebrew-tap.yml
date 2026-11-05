@@ -79,7 +79,7 @@ jobs:
           pkg="$RUNNER_TEMP/unpacked"
           mkdir -p "$pkg"
           tar -xJf "$TARBALL" -C "$pkg"
-          diff -r -x README.md "$pkg"/*/ "$(brew --prefix qemu-gl)/libexec/"
+          diff -r -x README.md "$pkg"/*/ "$(brew --prefix local/qemu-gl/qemu-gl)/libexec/"
           echo "installed files are identical to the release asset"
 
       - name: Commit to the tap
