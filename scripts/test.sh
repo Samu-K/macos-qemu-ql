@@ -19,7 +19,8 @@
 #                 GitHub's macOS runners are VMs without nested virtualization)
 #   TEST_TIMEOUT  seconds to wait for each boot (default: 180)
 #   SIGN_IDENTITY as for scripts/package.sh: when it is a Developer ID, the
-#                 bundle test requires the package to be signed with it
+#                 bundle test requires the package to be signed with it and
+#                 notarized
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -265,6 +266,16 @@ test_bundle() {
         [[ "$ent" != *disable-library-validation* ]] &&
             pass "library validation enabled" ||
             fail "a Developer ID package must not disable library validation"
+        # Bare executables can't carry a stapled ticket; this asks Apple online.
+        local unnotarized=()
+        for f in "$PREFIX"/bin/* "$PREFIX"/lib/*.dylib; do
+            file -b "$f" | grep -q '^Mach-O' || continue
+            codesign --verify -R=notarized --check-notarization "$f" >/dev/null 2>&1 ||
+                unnotarized+=("$(basename "$f")")
+        done
+        [ ${#unnotarized[@]} -eq 0 ] &&
+            pass "notarized by Apple" ||
+            fail "not notarized: ${unnotarized[*]}"
     else
         pass "signed ${authority:+by $authority}${authority:-ad hoc}"
     fi
