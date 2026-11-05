@@ -41,7 +41,20 @@ Each component is the upstream release plus the patches in [`patches/`](patches/
 
 ## Status
 
-The stack builds, and QEMU boots UEFI firmware with HVF under both `gl=es` and `gl=on`. Accelerated rendering inside a Linux guest hasn't been verified yet. Prebuilt binaries and a Homebrew tap are planned; for now, build from source.
+The stack builds, and QEMU boots UEFI firmware with HVF under both `gl=es` and `gl=on`. Accelerated rendering inside a Linux guest hasn't been verified yet. Releases are signed and notarized binaries, also installable with Homebrew; the first one is still to come.
+
+## Installing
+
+With Homebrew:
+
+```sh
+brew unlink qemu              # only if Homebrew's qemu is installed; the two conflict
+brew install samu-k/tap/qemu-gl
+```
+
+Firmware is in `$(brew --prefix qemu-gl)/libexec/share/qemu`. Without Homebrew, download `macos-qemu-gl-<version>-macos-arm64.tar.xz` from [Releases](https://github.com/Samu-K/macos-qemu-ql/releases) and unpack it anywhere; it is self-contained.
+
+The examples below use a build from source, in `prefix/`.
 
 ## Building
 
@@ -104,7 +117,7 @@ Notes:
 
 [`CLAUDE.md`](CLAUDE.md) describes the maintainer workflow (changing patches, bumping versions). A nightly GitHub Actions job builds and tests new upstream releases; see [`docs/ci.md`](docs/ci.md).
 
-Packaging and releases are described in [`docs/packaging.md`](docs/packaging.md).
+Packaging, releases and the Homebrew tap are described in [`docs/packaging.md`](docs/packaging.md).
 
 ## Credits
 

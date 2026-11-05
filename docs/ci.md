@@ -1,11 +1,12 @@
 # CI and automated updates
 
-Three GitHub Actions workflows, all on GitHub's Apple Silicon runners (`macos-15`):
+GitHub Actions workflows, on GitHub's Apple Silicon runners (`macos-15`):
 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `ci.yml` | pull requests, pushes to `main`, manual | `scripts/ci.sh`: fetch, build, test, package, test the package; uploads the package |
-| `release.yml` | tags `v<qemu version>-<n>` | `scripts/ci.sh` plus the source archive, then a draft release (see [packaging.md](packaging.md)) |
+| `release.yml` | manual, tags `v<qemu version>-<n>` | `scripts/ci.sh` plus the source archive, signed and notarized; publishes a release and updates the tap (see [packaging.md](packaging.md#releasing)) |
+| `homebrew-tap.yml` | called by `release.yml`, releases published by hand, manual | tests the formula for the latest release and commits it to `Samu-K/homebrew-tap` |
 | `nightly-updates.yml` | daily 02:23 UTC, manual | finds new upstream releases, then tests, merges or reports them |
 
 ## Nightly updates

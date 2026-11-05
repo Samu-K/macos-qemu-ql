@@ -1,0 +1,106 @@
+name: Homebrew tap
+
+# Points Formula/qemu-gl.rb in <owner>/homebrew-tap at a published release,
+# after installing and testing the formula with the release's own asset.
+# release.yml calls it; it also runs when a draft release is published by
+# hand, and manually for a tag. Only the latest release is put in the tap.
+#
+# Needs the secret TAP_GITHUB_TOKEN, a token that can push to the tap
+# repository (docs/packaging.md).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (v<qemu version>-<n>)
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+concurrency:
+  group: homebrew-tap
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Update formula
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      TAP_REPO: ${{ github.repository_owner }}/homebrew-tap
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest="$(gh release view --json tagName --jq .tagName)"
+          if [ "$TAG" != "$latest" ]; then
+            echo "::error::$TAG isn't the latest release ($latest); the tap only follows the latest"
+            exit 1
+          fi
+          dl="$RUNNER_TEMP/release"
+          gh release download "$TAG" --dir "$dl" \
+            --pattern '*-macos-arm64.tar.xz' --pattern '*-macos-arm64.tar.xz.sha256'
+          (cd "$dl" && shasum -a 256 -c ./*.sha256)
+          tarball="$(echo "$dl"/*-macos-arm64.tar.xz)"
+          echo "TARBALL=$tarball" >>"$GITHUB_ENV"
+
+      - name: Generate the formula
+        run: |
+          scripts/homebrew-formula.sh "$TARBALL" >"$RUNNER_TEMP/qemu-gl.rb"
+          cat "$RUNNER_TEMP/qemu-gl.rb"
+
+      - name: Install and test the formula
+        run: |
+          brew tap-new --no-git local/qemu-gl >/dev/null
+          cp "$RUNNER_TEMP/qemu-gl.rb" "$(brew --repository local/qemu-gl)/Formula/"
+          brew style local/qemu-gl/qemu-gl
+          if brew list --formula qemu >/dev/null 2>&1; then
+            brew unlink qemu
+          fi
+          brew install --formula local/qemu-gl/qemu-gl
+          brew test local/qemu-gl/qemu-gl
+
+          # Homebrew must install the package unmodified: any rewrite would
+          # replace its signatures with ad hoc ones (see preserve_rpath).
+          # It moves README.md out of libexec, which is fine.
+          pkg="$RUNNER_TEMP/unpacked"
+          mkdir -p "$pkg"
+          tar -xJf "$TARBALL" -C "$pkg"
+          diff -r -x README.md "$pkg"/*/ "$(brew --prefix qemu-gl)/libexec/"
+          echo "installed files are identical to the release asset"
+
+      - name: Commit to the tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::error::secret TAP_GITHUB_TOKEN is not set; see docs/packaging.md"
+            exit 1
+          fi
+          tap="$RUNNER_TEMP/tap"
+          git clone "https://x-access-token:$TAP_TOKEN@github.com/$TAP_REPO.git" "$tap"
+          mkdir -p "$tap/Formula"
+          cp "$RUNNER_TEMP/qemu-gl.rb" "$tap/Formula/qemu-gl.rb"
+          cd "$tap"
+          git add Formula/qemu-gl.rb
+          if git diff --cached --quiet; then
+            echo "$TAP_REPO already has qemu-gl ${TAG#v}"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "qemu-gl ${TAG#v}"
+          git push origin HEAD
