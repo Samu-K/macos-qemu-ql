@@ -19,7 +19,7 @@ if [ "${1:-}" = --reset ]; then
     shift
 fi
 
-# git am needs a committer identity; the patch authors are preserved.
+# git am needs a committer identity; patch authors are preserved.
 export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-macos-qemu-gl}"
 export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-macos-qemu-gl@localhost}"
 
@@ -89,14 +89,11 @@ apply_patches() {
 
 sync_angle() (
     local dir="$SRC/angle"
-    # depot_tools only on PATH here: its ninja/gn wrappers would shadow the
-    # real tools for the other builds.
+    # Keep depot_tools off the global PATH; its wrappers shadow ninja/gn.
     export DEPOT_TOOLS_UPDATE=0
     export PATH="$SRC/depot_tools:$PATH"
     log "angle: syncing third-party dependencies (large download on first run)"
-    # Same as ANGLE's scripts/bootstrap.py, minus dependencies that only the
-    # backends/tests we don't build need (~7 GB): OpenCL (LLVM sources),
-    # WebGPU (Dawn), Vulkan (SwiftShader, conformance tests), perf tooling.
+    # ANGLE's bootstrap.py config minus deps for backends/tests we don't build (~7 GB).
     cat >"$dir/.gclient" <<'GCLIENT'
 solutions = [
   {

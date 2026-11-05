@@ -4,16 +4,15 @@
 #   scripts/build.sh [component...]
 #
 # Components build in dependency order: angle libepoxy virglrenderer qemu.
-# Re-running is incremental; delete build/<component> for a clean rebuild.
+# Incremental; delete build/<component> to rebuild from scratch.
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-# Subshell so DEVELOPER_DIR from use_xcode doesn't leak into other components.
+# Subshell keeps DEVELOPER_DIR from leaking.
 build_angle() (
     local out="$BUILD/angle"
     use_xcode
-    # Metal backend only: gl=es renders through ANGLE-on-Metal, while gl=on
-    # uses Apple's OpenGL.framework directly and never touches ANGLE.
+    # Metal only; gl=on uses OpenGL.framework and never touches ANGLE.
     local args=(
         is_debug=false
         symbol_level=0
@@ -26,8 +25,7 @@ build_angle() (
         angle_has_frame_capture=false
         angle_build_tests=false
     )
-    # Use the gn/ninja binaries gclient pinned in the ANGLE tree; depot_tools'
-    # gn wrapper would first need its own Python bootstrap.
+    # gclient's pinned gn/ninja, not depot_tools' wrappers.
     (cd "$SRC/angle" && buildtools/mac/gn gen "$out" --args="${args[*]}")
     "$SRC/angle/third_party/ninja/ninja" -C "$out" install_angle
 
@@ -63,10 +61,7 @@ build_qemu() {
     local out="$BUILD/qemu"
     mkdir -p "$out"
     if [ ! -f "$out/build.ninja" ]; then
-        # Explicit feature list instead of auto-detection, so the result
-        # doesn't depend on what happens to be installed on the build host.
-        # External libraries: the GL stack plus glib, pixman, libslirp, zstd.
-        # The rest only needs macOS frameworks or code bundled with QEMU.
+        # Explicit feature list so the result doesn't depend on the build host.
         (cd "$out" && "$SRC/qemu/configure" \
             --prefix="$PREFIX" \
             --target-list="$QEMU_TARGETS" \
@@ -94,8 +89,7 @@ build_qemu() {
     make -C "$out" install
 }
 
-# Python for the meson-based builds: QEMU's configure needs >= 3.11 (the
-# macOS system python is 3.9) and virglrenderer's codegen needs PyYAML.
+# QEMU needs python >= 3.11 (system python is 3.9); virglrenderer needs PyYAML.
 setup_venv() {
     local venv="$BUILD/venv" py
     py="$(brew --prefix)/bin/python3"

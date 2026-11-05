@@ -22,7 +22,6 @@ for c in "${selected[@]}"; do
     out="$PATCHES/$c"
     mkdir -p "$out"
     rm -f "$out"/*.patch
-    # --zero-commit/--no-signature keep the files stable across re-exports.
     git -C "$dir" format-patch --quiet --zero-commit --no-signature \
         --output-directory "$out" upstream.."$PATCH_BRANCH"
     n=$(find "$out" -name '*.patch' | wc -l | tr -d ' ')
