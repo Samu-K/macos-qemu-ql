@@ -52,7 +52,7 @@ ALL_TESTS=(version linkage features qemu-img boot-es boot-on bundle)
 BINARIES=(qemu-system-aarch64 qemu-system-x86_64 qemu-img)
 
 # Libraries the binaries may link besides macOS itself (dependency policy in
-# CLAUDE.md): our GL stack, plus these from Homebrew.
+# CONTRIBUTING.md): our GL stack, plus these from Homebrew.
 ALLOWED_OWN_LIBS='libepoxy|libvirglrenderer'
 ALLOWED_BREW_LIBS='libglib-2\.0|libpixman-1|libslirp|libzstd'
 

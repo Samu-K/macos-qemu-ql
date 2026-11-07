@@ -41,7 +41,9 @@ Each component is the upstream release plus the patches in [`patches/`](patches/
 
 ## Status
 
-The stack builds, and QEMU boots UEFI firmware with HVF under both `gl=es` and `gl=on`. Accelerated rendering inside a Linux guest hasn't been verified yet. Releases are signed and notarized binaries, also installable with Homebrew; the first one is still to come.
+The stack builds, and QEMU boots UEFI firmware with HVF under both `gl=es` and `gl=on`. Accelerated rendering inside a Linux guest hasn't been verified yet, so the guest-side `glxinfo` check under [Usage](#usage) is the open test.
+
+Releases are signed and notarized binaries, also installable with Homebrew. The latest is [v11.1.3-1](https://github.com/Samu-K/macos-qemu-ql/releases/latest), with QEMU 11.1.3. New upstream releases are picked up automatically by a nightly workflow.
 
 ## Installing
 
@@ -53,7 +55,7 @@ brew trust samu-k/tap         # lets Homebrew load (and `brew upgrade`) formulae
 brew install samu-k/tap/qemu-gl
 ```
 
-Firmware is in `$(brew --prefix qemu-gl)/libexec/share/qemu`. Without Homebrew, download `macos-qemu-gl-<version>-macos-arm64.tar.xz` from [Releases](https://github.com/Samu-K/macos-qemu-ql/releases) and unpack it anywhere; it is self-contained.
+Firmware is in `$(brew --prefix qemu-gl)/libexec/share/qemu`. Without Homebrew, download `macos-qemu-gl-<version>-macos-arm64.tar.xz` (for example `macos-qemu-gl-11.1.3-1-macos-arm64.tar.xz`) from [Releases](https://github.com/Samu-K/macos-qemu-ql/releases) and unpack it anywhere; it is self-contained.
 
 The examples below use a build from source, in `prefix/`.
 
@@ -116,7 +118,7 @@ Notes:
 
 ## Development
 
-[`CLAUDE.md`](CLAUDE.md) describes the maintainer workflow (changing patches, bumping versions). A nightly GitHub Actions job builds and tests new upstream releases; see [`docs/ci.md`](docs/ci.md).
+[`CONTRIBUTING.md`](CONTRIBUTING.md) describes the workflow (building, changing patches, bumping versions). A nightly GitHub Actions job builds and tests new upstream releases; see [`docs/ci.md`](docs/ci.md).
 
 Packaging, releases and the Homebrew tap are described in [`docs/packaging.md`](docs/packaging.md).
 
