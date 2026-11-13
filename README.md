@@ -34,7 +34,7 @@ The patches exist, mostly Akihiko Odaki's macOS virgl work, but aren't upstream 
 | [QEMU](https://www.qemu.org) | 11.1.3 (`qemu-system-aarch64`, `qemu-system-x86_64`, `qemu-img`) |
 | [virglrenderer](https://gitlab.freedesktop.org/virgl/virglrenderer) | 1.3.0 |
 | [libepoxy](https://github.com/anholt/libepoxy) | 1.5.10 |
-| [ANGLE](https://chromium.googlesource.com/angle/angle) | Chrome 157 stable branch (`chromium/8103`), Metal backend only |
+| [ANGLE](https://chromium.googlesource.com/angle/angle) | Chrome 158 stable branch (`chromium/8127`), Metal backend only |
 <!-- versions:end -->
 
 Each component is the upstream release plus the patches in [`patches/`](patches/); exact refs are in [`versions.env`](versions.env). The only other runtime libraries are Homebrew's glib, pixman, libslirp and zstd.
